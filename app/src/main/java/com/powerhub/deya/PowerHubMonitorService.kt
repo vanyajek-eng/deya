@@ -58,8 +58,12 @@ class PowerHubMonitorService : Service() {
                 stopSelf()
                 return
             }
-            val read = withContext(Dispatchers.IO) {
-                DataSource().read(config)
+            val read = try {
+                withContext(Dispatchers.IO) { DataSource().read(config) }
+            } catch (error: Exception) {
+                updateState("Зв'язок втрачено · повторна спроба за ${config.pollIntervalSeconds} с")
+                delay(config.pollIntervalSeconds.coerceIn(3, 60) * 1000L)
+                continue
             }
             val prefs = getSharedPreferences("powerhub_alert_state", Context.MODE_PRIVATE)
             prefs.edit()
