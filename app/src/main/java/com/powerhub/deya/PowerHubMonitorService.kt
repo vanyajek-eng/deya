@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
 
 class PowerHubMonitorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var pollingJob = kotlinx.coroutines.Job()
+    private var pollingJob: kotlinx.coroutines.Job = kotlinx.coroutines.Job()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
