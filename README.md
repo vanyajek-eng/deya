@@ -1,30 +1,27 @@
 # PowerHub
 
-Native Android companion project for Deye hybrid inverters.
+Android companion for a Deye inverter and Solarman Wi‑Fi logger.
 
-## Current implementation (0.2.0)
+## Current implementation (0.3.0)
 
-- Native Kotlin + Jetpack Compose dashboard with clearly labelled demo telemetry
-- Editable HTTP JSON endpoint, method, headers, body and dot-path field mappings
-- Background HTTP monitoring with WorkManager, started from the dashboard
-- Android notifications and optional Telegram alerts for low battery SOC and off-grid load at or above 3 kW
-- Home-screen widget refreshed with the latest successful background readings
-- Modbus TCP FC03 reader module and user-entered register settings
-- Config persistence on device using DataStore
-- GitHub Actions workflow to build a debug APK
+- Local Solarman V5 TCP connection to the logger on port 8899
+- Wi‑Fi subnet search for a logger that exposes the Solarman V5 port
+- Continuous local polling, configurable from 3 to 60 seconds
+- Foreground monitor notification and restart after device reboot (if enabled)
+- Dashboard and home-screen widget updated from local readings
+- Low-battery and off-grid load alerts, with optional Telegram delivery
+- Deye Cloud credential form; fields are encrypted at rest, but Cloud API requests are not connected yet
+- HTTP JSON mode retained as a separate source; background checks use WorkManager and may be delayed by Android
+- Encrypted app configuration using Android Keystore; Android backup is disabled
 
-Background checks run no more often than every 15 minutes. Android may defer them further to save battery. The first check runs immediately after enabling monitoring. The worker currently supports HTTP JSON only. Modbus settings are saved, but Modbus polling is not yet connected to the dashboard or background worker.
+The current register defaults target the single-phase **SUN-5K-SG03LP1-EU** context: grid voltage 150, grid power 169, load power 178, battery voltage 183 and SOC 184. These values need to be confirmed against the inverter firmware and the exact logger. Three-phase polling is deliberately blocked until its model-specific register map is confirmed.
 
-**This is an early version, not a certified or safety-critical alarm system.** Alerts depend on network access, Android background scheduling, notification permission, and correct API field mappings. The app does not assume a Deye register map. Confirm all readings against the inverter before relying on them.
+Solarman V5 is proprietary and its public protocol descriptions are reverse-engineered. Check every displayed value against Deye Cloud or the inverter screen before relying on alerts. This app is not a safety-certified alarm system.
 
 ## Build
 
-The GitHub Actions workflow builds with Gradle 8.9 and Java 17 on every push to main, then uploads `PowerHub-debug-apk`. Open the Actions tab in this repository to download the artifact after a successful run.
-
-## Hardware configuration
-
-No Deye IP address, API endpoint, credentials or register map is hardcoded. Confirm the exact inverter model, firmware, logger/gateway and official protocol/register documentation before enabling live data. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+GitHub Actions builds a debug APK with Gradle 8.9 and Java 17 on pushes to main. Download `PowerHub-debug-apk` from the latest successful run in the Actions tab.
 
 ## Security
 
-Do not commit API keys, passwords, logger credentials or Telegram bot tokens. App settings currently use local DataStore; secret values are not yet protected with Android Keystore-backed encryption. HTTP cleartext is enabled for local logger endpoints; use HTTPS wherever supported.
+No credentials from screenshots or chat are included in the source. Cloud and Telegram settings are encrypted locally with an Android Keystore key and excluded from Android backup. The Deye Cloud form is not used for network requests yet.
