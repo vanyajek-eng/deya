@@ -1,24 +1,29 @@
 # PowerHub
 
-Native Android companion for Deye hybrid inverters.
+Native Android companion project for Deye hybrid inverters.
 
-## Status
+## Current implementation (0.1.0 scaffold)
 
-Initial project bootstrap. The app includes a configurable data-source architecture and demo mode. Live inverter communication must be configured for the exact logger/protocol in **Settings → Connection**; no unverified Deye register map or endpoint is assumed.
+- Native Kotlin + Jetpack Compose Android app
+- Ukrainian dashboard with clearly labelled demo telemetry
+- Editable HTTP JSON endpoint, method, headers, body and dot-path field mappings
+- Modbus TCP FC03 client module with user-supplied register addresses
+- Telegram Bot API sender module
+- Config persistence on device using DataStore
+- Home-screen widget scaffold
+- Alert state-machine module for 30-second grid debounce, 3 kW off-grid overload and low-SOC thresholds
+- GitHub Actions workflow to build a debug APK
+
+**Important:** this is an initial development scaffold, not yet a finished live monitoring alarm system. The HTTP JSON source can be manually tested from the dashboard. The Modbus module, alert state machine and Telegram sender are implemented as modules but are not yet wired into continuous background polling and delivery. The widget currently displays static setup guidance. Do not rely on this version for power-safety alarms.
 
 ## Build
 
-Open this repository in Android Studio or run `./gradlew assembleDebug`. GitHub Actions builds a debug APK on every push to `main` and publishes it as an artifact.
+The GitHub Actions workflow builds with Gradle 8.9 and Java 17 on every push to main, then uploads PowerHub-debug-apk. Open the Actions tab in this repository to download the artifact after a successful run.
 
-## Features
+## Hardware configuration
 
-- Ukrainian dashboard and live/demo telemetry
-- Editable HTTP/JSON and Modbus TCP connection settings
-- JSONPath-like field mappings and Modbus register definitions
-- Import/export configuration
-- Connection diagnostics and raw response preview
-- Grid transition debounce (30 seconds), overload warning (3 kW off-grid), low battery warning (20%)
-- Telegram notifications
-- Android home-screen widget
+No Deye IP address, API endpoint, credentials or register map is hardcoded. Confirm the exact inverter model, firmware, logger/gateway and official protocol/register documentation before enabling live data. See docs/CONFIGURATION.md.
 
-See `docs/CONFIGURATION.md` for connection setup and security notes.
+## Security
+
+Do not commit API keys, passwords, logger credentials or Telegram bot tokens. Secret storage needs Android Keystore-backed encryption before production use.
