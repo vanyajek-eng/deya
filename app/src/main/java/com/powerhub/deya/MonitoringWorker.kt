@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.powerhub.deya.widget.PowerHubWidget
 
 /**
  * Periodic monitor. WorkManager runs periodic work no more often than every 15 minutes;
@@ -26,6 +27,13 @@ class MonitoringWorker(context: Context, params: WorkerParameters) : CoroutineWo
         }
 
         val prefs = applicationContext.getSharedPreferences("powerhub_alert_state", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("latest_soc", "%.0f".format(telemetry.soc))
+            .putString("latest_voltage", "%.1f".format(telemetry.batteryVoltage))
+            .putString("latest_load", "%.2f".format(telemetry.loadKw))
+            .putString("latest_grid", telemetry.gridPresent.toString())
+            .apply()
+        runCatching { PowerHubWidget().updateAll(applicationContext) }
         val lowNow = telemetry.soc <= config.lowSoc
         val overloadNow = !telemetry.gridPresent && telemetry.loadKw >= 3.0f
         val lowNew = lowNow && !prefs.getBoolean("low_soc_active", false)
