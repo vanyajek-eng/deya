@@ -105,9 +105,9 @@ class SolarmanV5Client(
         val payloadLength = 15 + modbus.size
         val frame = ByteArrayOutputStream()
         frame.write(0xA5)
-        writeLe(frame, payloadLength, 2)
+        writeLe(frame, payloadLength.toLong(), 2)
         writeLe(frame, 0x4510, 2)
-        writeLe(frame, ThreadLocalRandom.current().nextInt(1, 255), 1)
+        writeLe(frame, ThreadLocalRandom.current().nextInt(1, 255).toLong(), 1)
         writeLe(frame, 0, 1)
         writeLe(frame, serial, 4)
         frame.write(0x02)
