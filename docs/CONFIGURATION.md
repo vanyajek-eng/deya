@@ -1,25 +1,33 @@
 # PowerHub configuration
 
-## Current state
+## Local Solarman V5
 
-The dashboard starts with clearly labelled demo telemetry; those values are not readings from your inverter.
+Use the inverter and logger on the same local network. The app can scan the active IPv4 /24 network for a device accepting TCP connections on port 8899. It then reads the logger serial number from the label; the logger serial and inverter serial are different fields.
 
-## HTTP JSON
+The current default register map is for the single-phase Deye SUN-5K-SG03LP1-EU context:
 
-Set source to HTTP JSON, enter a complete URL, GET or POST, optional JSON headers/body, and dot-separated JSON object paths for SOC, battery voltage, load in kW, and grid state. Tap **Refresh** on the dashboard to read once. Arrays and advanced JSONPath syntax are not supported.
+- Grid voltage: 150, scale 0.1 V
+- Grid power: 169
+- Load power: 178, watts
+- Battery voltage: 183, scale 0.01 V
+- Battery SOC: 184, percent
 
-Select **Enable background monitoring** on the dashboard to save the current settings and start periodic checks. The first check runs immediately, then Android schedules checks at a minimum interval of 15 minutes and may defer them further. Select **Stop background monitoring** to cancel them. The worker requires HTTP JSON mode.
+Those addresses are defaults, not guaranteed for every firmware or inverter model. The inputs remain editable. Three-phase mode is shown in settings, but polling is blocked until its model-specific register map is confirmed.
 
-## Alerts and widget
+The local reader wraps Modbus RTU FC03 requests in Solarman V5 frames. Public protocol material is reverse-engineered and logger firmware compatibility can vary. Verify readings against the inverter before enabling alarms.
 
-The monitor displays Android notifications for a new low-SOC condition and for off-grid load at or above 3 kW. If Telegram bot token and chat ID are configured, it also sends the same alert to Telegram. Android notification permission is requested when the app starts on Android 13 and newer.
+## Polling and alerts
 
-The home-screen widget shows the latest successful background reading. It remains empty until a background check has succeeded. Widget refreshes happen after those checks.
+Local monitoring runs as an Android foreground service at the configured interval (3–60 seconds) and displays an ongoing notification. Enable **Автозапуск після перезавантаження** to have the app attempt to resume after reboot. Android power-management settings can still restrict background activity.
 
-## Modbus TCP
+The monitor sends Android notifications for a new low-SOC condition and off-grid load at or above the configured watt limit. If Telegram details are configured, it also attempts Telegram delivery.
 
-The repository includes an FC03 Modbus TCP client. Register addresses are intentionally user-supplied. The UI stores Modbus settings, but Modbus is not yet connected to dashboard or background polling. The app does not assume a Deye register map, scale, signedness, or byte order. Confirm the exact inverter model, firmware, logger/gateway and official register map before using it.
+HTTP JSON remains available as an alternate source. Its WorkManager background schedule runs at a minimum of 15 minutes and may be delayed further by Android.
+
+## Deye Cloud
+
+The settings screen contains fields for the Deye Cloud application credentials and account. They are encrypted on the phone, but the Deye Cloud API is not connected yet. Do not expect remote readings from those fields in this build.
 
 ## Security
 
-Do not commit bot tokens, passwords, or private network credentials. The current configuration form stores values in local DataStore and secrets are not yet protected with Android Keystore-backed encryption. HTTP cleartext is enabled for local logger endpoints; use HTTPS wherever supported.
+All saved app settings are encrypted with a key held in Android Keystore. App data backup is disabled because encrypted settings cannot be restored without the device key. No credentials shown in screenshots or conversation are embedded in the repository.
