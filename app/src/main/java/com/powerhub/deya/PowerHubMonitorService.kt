@@ -39,8 +39,8 @@ class PowerHubMonitorService : Service() {
             pollingJob = serviceScope.launch {
                 try {
                     pollLoop()
-                } catch (_: CancellationException) {
-                    throw
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (error: Exception) {
                     updateState("Помилка з'єднання: ${error.message ?: "невідома помилка"}")
                     stopSelf()
