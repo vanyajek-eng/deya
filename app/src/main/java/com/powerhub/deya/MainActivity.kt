@@ -1,7 +1,10 @@
 package com.powerhub.deya
 
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
 import androidx.activity.ComponentActivity
+import androidx.work.*
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 private val Navy = Color(0xFF101B24)
 private val Panel = Color(0xFF1A2A36)
@@ -26,6 +30,7 @@ private val Mint = Color(0xFF58D6A5)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Mint, background = Navy, surface = Panel)) {
                 PowerHubScreen()
@@ -88,6 +93,20 @@ private fun PowerHubScreen() {
                     }, modifier = Modifier.fillMaxWidth(), enabled = !busy && config.mode == "HTTP_JSON") {
                         Text(if (busy) "З'єднання…" else "Оновити показники")
                     }
+                    OutlinedButton(onClick = {
+                        val work = WorkManager.getInstance(context)
+                        val periodic = PeriodicWorkRequestBuilder<MonitoringWorker>(15, TimeUnit.MINUTES).build()
+                        work.enqueueUniquePeriodicWork("powerhub-monitor", ExistingPeriodicWorkPolicy.UPDATE, periodic)
+                        work.enqueueUniqueWork("powerhub-monitor-now", ExistingWorkPolicy.REPLACE, OneTimeWorkRequestBuilder<MonitoringWorker>().build())
+                        status = "Фоновий контроль увімкнено. Перевірка приблизно кожні 15 хвилин."
+                    }, modifier = Modifier.fillMaxWidth(), enabled = config.mode == "HTTP_JSON") {
+                        Text("Увімкнути фоновий контроль")
+                    }
+                    OutlinedButton(onClick = {
+                        WorkManager.getInstance(context).cancelUniqueWork("powerhub-monitor")
+                        WorkManager.getInstance(context).cancelUniqueWork("powerhub-monitor-now")
+                        status = "Фоновий контроль зупинено."
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Зупинити фоновий контроль") }
                     OutlinedButton(onClick = { tab = 1 }, modifier = Modifier.fillMaxWidth()) { Text("Налаштувати джерело даних") }
                 }
             } else {
