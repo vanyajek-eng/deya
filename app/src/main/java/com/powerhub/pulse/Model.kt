@@ -82,7 +82,7 @@ class AlarmEngine(saved: JSONObject = JSONObject()) {
     fun gap() { candidate=null; since=0; lastObserved=0 }
     fun state() = JSONObject().apply { stable?.let { put("stable",it) }; put("low",low); put("high",high) }
     fun accept(r: Reading,s: Settings,now: Long): List<Alarm> =
-        evaluate(r.soc,r.loadKw*1000f,r.gridPresent,r.measuredAt,s,now)
+        evaluate(r.soc,r.loadWatts,r.grid,r.measuredAt,s,now)
     fun acceptSnapshot(snapshot: Snapshot,s: Settings,now: Long): List<Alarm> {
         if(!snapshot.fresh(System.currentTimeMillis(),s.maxAgeSeconds)) { gap();return emptyList() }
         val m=snapshot.metrics()

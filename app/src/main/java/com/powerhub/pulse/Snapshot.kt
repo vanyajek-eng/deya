@@ -91,9 +91,9 @@ data class Snapshot(
                 } },meta.keys().asSequence().associateWith { meta.optString(it) },mapping)
         }
         fun from(r: Reading)=Snapshot("",r.measuredAt,1,r.source,listOf(
-            MeasurePoint("SOC",r.soc.toString(),"%"),MeasurePoint("BatteryVoltage",r.batteryVoltage.toString(),"V"),
-            MeasurePoint("TotalConsumptionPower",r.loadKw.times(1000).toString(),"W"),
-            MeasurePoint("GridPresent",r.gridPresent.toString())
+            MeasurePoint("SOC",r.soc.toString(),"%"),MeasurePoint("BatteryVoltage",r.volts.toString(),"V"),
+            MeasurePoint("TotalConsumptionPower",r.loadWatts.toString(),"W"),
+            MeasurePoint("GridPresent",r.grid.toString())
         )).copy(mapping=Settings(gridKey="GridPresent",gridIsVoltage=false))
     }
 }
