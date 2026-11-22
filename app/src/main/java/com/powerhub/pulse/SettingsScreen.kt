@@ -79,7 +79,7 @@ import androidx.compose.ui.unit.sp
                     }
                 }
             }
-            Button(onClick=pin,modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Violet,onContainerColor=Night)) {
+            Button(onClick=pin,modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Violet,contentColor=Night)) {
                 Text("Додати віджет на головний екран")
             }
             Text("Під час моніторингу оновлюється разом із API. Без постійного моніторингу Android виконує періодичні перевірки приблизно раз на 15 хв або пізніше. Кнопка ↻ запитує оновлення без входу в додаток.",color=Subtle,fontSize=11.sp,lineHeight=16.sp)

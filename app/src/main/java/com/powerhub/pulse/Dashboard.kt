@@ -117,7 +117,7 @@ fun Dashboard(state: ScreenState,s: Settings,now: Long,onParameters: ()->Unit,on
                     Text("Показники та оновлення без відкриття додатку",color=Subtle,fontSize=11.sp)
                 }
             }
-            Button(onClick=onWidget,modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Violet,onContainerColor=Night)) {
+            Button(onClick=onWidget,modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Violet,contentColor=Night)) {
                 Text("Додати готовий віджет")
             }
         }
