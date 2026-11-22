@@ -1,27 +1,59 @@
-# PowerHub
+# Deye Pulse
 
-Android companion for a Deye inverter and Solarman Wi‑Fi logger.
+New Android app built from scratch, separate from the old PowerHub app.
+Package: `com.powerhub.pulse`. Android 8+.
 
-## Current implementation (0.3.0)
+## What works in the source
+- Official Deye Cloud token authentication, SHA-256 password, encrypted on-device credentials.
+- Latest inverter data by SN, strict field and unit parsing, timestamp and offline checks.
+- Dashboard with real readings, sample-age labels, load history collected during the session.
+- User-started continuous monitoring with visible stop action and wake lock.
+- Grid loss/restoration confirmed across measurements spanning 30 seconds.
+- Low SOC at 20%, off-grid load at 3000 W by default; editable thresholds and hysteresis.
+- Persistent alarm latches and a 100-event journal.
+- Local Android alerts and optional Telegram; separate delivery tests.
+- Home screen widget with measurement timestamp.
+- Optional local HTTP JSON endpoint.
 
-- Local Solarman V5 TCP connection to the logger on port 8899
-- Wi‑Fi subnet search for a logger that exposes the Solarman V5 port
-- Continuous local polling, configurable from 3 to 60 seconds
-- Foreground monitor notification and restart after device reboot (if enabled)
-- Dashboard and home-screen widget updated from local readings
-- Low-battery and off-grid load alerts, with optional Telegram delivery
-- Deye Cloud credential form; fields are encrypted at rest, but Cloud API requests are not connected yet
-- HTTP JSON mode retained as a separate source; background checks use WorkManager and may be delayed by Android
-- Encrypted app configuration using Android Keystore; Android backup is disabled
+## Install
+Open Actions → latest successful **Deye Pulse APK** run → artifact **Deye-Pulse-APK**.
+Unzip and install Deye-Pulse.apk. This is a debug-signed personal-use build.
+The app installs separately from PowerHub. Stop the old app's monitor to avoid duplicate alerts.
+Enter your Deye API credentials yourself; none are embedded in this repository.
+Choose the correct region, enter inverter SN, press **Зберегти й перевірити API**.
+Allow notifications, run both delivery tests as needed, allow unrestricted battery use, then start monitoring.
 
-The current register defaults target the single-phase **SUN-5K-SG03LP1-EU** context: grid voltage 150, grid power 169, load power 178, battery voltage 183 and SOC 184. These values need to be confirmed against the inverter firmware and the exact logger. Three-phase polling is deliberately blocked until its model-specific register map is confirmed.
+## Data and latency
+Cloud API is polled every 15 seconds by default; this does not make the logger upload faster.
+A cached snapshot cannot confirm a grid transition. Confirmation uses distinct measurement timestamps.
+Cloud alarms include logger upload latency and cannot guarantee 30-second real-world delivery.
+No PC or server is needed, but the phone must have internet, the monitor must be running,
+and the inverter logger/router need connectivity during an outage.
+An offline logger or old snapshot produces a connection warning, never an inferred grid-loss alarm.
+The default maximum sample age is 10 minutes, adjustable.
+Android or device power management may stop background work; force-stopping the app prevents alarms.
 
-Solarman V5 is proprietary and its public protocol descriptions are reverse-engineered. Check every displayed value against Deye Cloud or the inverter screen before relying on alerts. This app is not a safety-certified alarm system.
+## API measure points
+Deye products may use different keys. Defaults: SOC, BatteryVoltage, TotalConsumptionPower, GridVoltage.
+Missing keys are reported with available keys; change mappings in Settings.
+Grid voltage >=80 V means present. Alternatively use an explicit boolean/0-or-1 grid field.
+Never infer outages from grid power being zero.
+Units are read from the cloud unit field, with a user-selected W/kW fallback.
+EU and US endpoints follow Deye's official sample. India is configurable and must be verified against your developer region.
 
-## Build
+Local JSON GET schema:
+```json
+{"soc":70,"batteryVoltage":52.2,"loadWatts":1100,"gridPresent":true,"timestamp":1700000000}
+```
+Timestamp must be current Unix seconds from the actual measurement.
 
-GitHub Actions builds a debug APK with Gradle 8.9 and Java 17 on pushes to main. Download `PowerHub-debug-apk` from the latest successful run in the Actions tab.
+## Validation
+CI runs JVM tests, Android lint, and APK compilation. Hardware and phone behavior need real-device testing.
 
-## Security
+## References
+- https://github.com/DeyeCloudDevelopers/deye-openapi-client-sample-code
+- https://developer.deyecloud.com/openmcp/docs/deye-open-mcp-tools.html
+- https://developer.android.com/develop/background-work/services/fgs/service-types
 
-No credentials from screenshots or chat are included in the source. Cloud and Telegram settings are encrypted locally with an Android Keystore key and excluded from Android backup. The Deye Cloud form is not used for network requests yet.
+This personal-use build declares a specialUse foreground service for ongoing household power alarms.
+A public Google Play release would require review of that use case and production signing.

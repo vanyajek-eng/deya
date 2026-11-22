@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="18dp" android:background="#131C23">
+<TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="DEYE PULSE" android:textColor="#B9F56B" android:textSize="14sp"/>
+<TextView android:id="@+id/widget_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Відкрий додаток" android:textColor="#FFFFFF" android:textSize="23sp"/>
+<TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ще немає даних" android:textColor="#9DAAB6" android:textSize="12sp"/>
+</LinearLayout>

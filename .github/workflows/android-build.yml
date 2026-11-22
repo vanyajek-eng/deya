@@ -1,7 +1,7 @@
-name: Android debug APK
+name: Deye Pulse APK
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,15 +17,24 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
-      - name: Install Android SDK platform
+      - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Test, lint and build
+        run: gradle testDebugUnitTest lintDebug assembleDebug
+      - name: Name APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Deye-Pulse.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: PowerHub-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Deye-Pulse-APK
+          path: app/build/outputs/apk/debug/Deye-Pulse.apk
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
