@@ -28,6 +28,7 @@ class DeyeApi {
             if(it.code==401) { token=""; expires=0; error("Авторизація завершилась. Повторна спроба автоматично.") }
             check(it.isSuccessful) { "Deye Cloud HTTP ${it.code}" }
             val j=JSONObject(it.body?.string() ?: error("Порожня відповідь Deye"))
+            if(!j.optBoolean("success",false)) { token=""; expires=0 }
             check(j.optBoolean("success",false)) { "Deye API: ${j.optString("code","ERROR")}. Перевір сервер, доступ і дані акаунта." }
             return j
         }

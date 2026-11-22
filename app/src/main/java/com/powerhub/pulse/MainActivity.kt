@@ -50,6 +50,8 @@ class MainActivity: ComponentActivity() {
         super.onCreate(b)
         Store.init(this)
         Notifier.channels(this)
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             MaterialTheme(colorScheme=darkColorScheme(primary=Lime,onPrimary=Ink,background=Ink,surface=CardColor,secondary=Amber)) {
                 App(

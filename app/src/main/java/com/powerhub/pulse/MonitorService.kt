@@ -21,7 +21,7 @@ class MonitorService: Service() {
         startForeground(1,Notifier.ongoing(this,"З’єднання з інвертором…"))
         Store.enabled(this,true)
         if(job?.isActive!=true) {
-            wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"DeyePulse:monitor").apply { acquire() }
+            wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"DeyePulse:monitor").apply { setReferenceCounted(false); acquire(600000L) }
             job=scope.launch { loop() }
         }
         return START_STICKY
@@ -34,6 +34,7 @@ class MonitorService: Service() {
         var connectionAlarm=false
         Store.status("З’єднання з інвертором…",true)
         while(currentCoroutineContext().isActive) {
+            wake?.acquire(600000L)
             var interval=15
             try {
                 val s=Store.settings(this)
