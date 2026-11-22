@@ -19,8 +19,8 @@ class DeyeApiTest {
     @Test(expected=IllegalArgumentException::class) fun offlineDoesNotMeanPowerOutage() {
         DeyeApi.parseCloud(fixture(state=3),Settings(inverterSn="123"))
     }
-    @Test(expected=IllegalStateException::class) fun missingPointDoesNotBecomeZero() {
-        DeyeApi.parseCloud(fixture(),Settings(inverterSn="123",socKey="missing"))
+    @Test fun automaticMappingRecoversAnAbsentConfiguredKey() {
+        assertEquals(47f,DeyeApi.parseCloud(fixture(),Settings(inverterSn="123",socKey="missing")).soc,0f)
     }
     @Test fun settingsRoundtrip() {
         val s=Settings(appId="abc",secret="secret",password="pass",lowSoc=17,highWatts=2500)

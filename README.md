@@ -1,59 +1,42 @@
-# Deye Pulse
+# Deye Pulse 2.0
 
-New Android app built from scratch, separate from the old PowerHub app.
-Package: `com.powerhub.pulse`. Android 8+.
+Native Android monitor using the official Deye Cloud API. New dashboard, automatic telemetry discovery, and a ready-to-pin home screen widget.
 
-## What works in the source
-- Official Deye Cloud token authentication, SHA-256 password, encrypted on-device credentials.
-- Latest inverter data by SN, strict field and unit parsing, timestamp and offline checks.
-- Dashboard with real readings, sample-age labels, load history collected during the session.
-- User-started continuous monitoring with visible stop action and wake lock.
-- Grid loss/restoration confirmed across measurements spanning 30 seconds.
-- Low SOC at 20%, off-grid load at 3000 W by default; editable thresholds and hysteresis.
-- Persistent alarm latches and a 100-event journal.
-- Local Android alerts and optional Telegram; separate delivery tests.
-- Home screen widget with measurement timestamp.
-- Optional local HTTP JSON endpoint.
+## Main experience
+- Overview: battery hero, household load, PV, grid and battery power, energy-system topology, daily counters, measurement age.
+- Parameters: every field returned by device/latest plus supported-but-not-returned keys from device/measurePoints, original key, value and unit, categories, search, favorites and device metadata.
+- Charts: up to 288 distinct locally collected snapshots, persistent across app restarts. Charts do not invent backfill and do not fetch historical readings from Cloud.
+- Events: outage, SOC, off-grid load, stale-data and delivery errors.
+- Settings: encrypted Cloud credentials, optional local JSON source, notification tests and widget metric selection.
 
-## Install
-Open Actions → latest successful **Deye Pulse APK** run → artifact **Deye-Pulse-APK**.
-Unzip and install Deye-Pulse.apk. This is a debug-signed personal-use build.
-The app installs separately from PowerHub. Stop the old app's monitor to avoid duplicate alerts.
-Enter your Deye API credentials yourself; none are embedded in this repository.
-Choose the correct region, enter inverter SN, press **Зберегти й перевірити API**.
-Allow notifications, run both delivery tests as needed, allow unrestricted battery use, then start monitoring.
+Missing summary fields do not block the parameter catalogue. GridVoltageL1L2 is detected automatically. Grid power equal to zero is never treated as an outage. Unknown fields are retained.
 
-## Data and latency
-Cloud API is polled every 15 seconds by default; this does not make the logger upload faster.
-A cached snapshot cannot confirm a grid transition. Confirmation uses distinct measurement timestamps.
-Cloud alarms include logger upload latency and cannot guarantee 30-second real-world delivery.
-No PC or server is needed, but the phone must have internet, the monitor must be running,
-and the inverter logger/router need connectivity during an outage.
-An offline logger or old snapshot produces a connection warning, never an inferred grid-loss alarm.
-The default maximum sample age is 10 minutes, adjustable.
-Android or device power management may stop background work; force-stopping the app prevents alarms.
+## Widget
+Four selectable API metrics, battery bar, grid state, live measurement age and refresh button.
+Add with the overview button or Android launcher widget picker. Resizing switches between large and compact layouts.
+During continuous monitoring it receives every completed API poll. Without it, WorkManager refreshes periodically (15 minutes or later, as allowed by Android); tapping refresh requests a background update without opening the app.
+The widget never uploads or modifies inverter settings.
 
-## API measure points
-Deye products may use different keys. Defaults: SOC, BatteryVoltage, TotalConsumptionPower, GridVoltage.
-Missing keys are reported with available keys; change mappings in Settings.
-Grid voltage >=80 V means present. Alternatively use an explicit boolean/0-or-1 grid field.
-Never infer outages from grid power being zero.
-Units are read from the cloud unit field, with a user-selected W/kW fallback.
-EU and US endpoints follow Deye's official sample. India is configurable and must be verified against your developer region.
+## Installation
+Download Deye-Pulse-APK from the latest successful Actions run, unzip and install Deye-Pulse.apk over the previous app.
+Package and encrypted settings key remain unchanged. CI restores the existing personal debug signing key.
+Cloud refresh frequency is governed by the logger, not phone polling. No PC is required. Allow notifications and unrestricted background battery use.
 
-Local JSON GET schema:
-```json
-{"soc":70,"batteryVoltage":52.2,"loadWatts":1100,"gridPresent":true,"timestamp":1700000000}
-```
-Timestamp must be current Unix seconds from the actual measurement.
+## Alerts and data quality
+New alarms require online, sufficiently recent measurements. Cached snapshots are displayed with their original timestamp.
+The grid confirmation interval uses distinct measurement timestamps; this can take multiple logger uploads.
+Defaults: SOC 20%, off-grid load 3000 W, grid confirmation 30 seconds, maximum alarm sample age 900 seconds.
+All thresholds are editable. Offline loggers and communication failures produce connection alarms rather than inferred power outages.
+The app is read-only and does not write inverter configuration.
 
 ## Validation
-CI runs JVM tests, Android lint, and APK compilation. Hardware and phone behavior need real-device testing.
+CI runs JVM tests, Android lint, APK compilation, and instrumented UI/widget inflation checks on an API 35 Pixel emulator.
+Synthetic telemetry exists only in androidTest; it is not shipped as live or demo data in the app.
+Device-validation screenshots are internal test output, not evidence of connection to a physical inverter.
+Production hardware validation is still required.
 
-## References
+## Official protocol references
 - https://github.com/DeyeCloudDevelopers/deye-openapi-client-sample-code
 - https://developer.deyecloud.com/openmcp/docs/deye-open-mcp-tools.html
-- https://developer.android.com/develop/background-work/services/fgs/service-types
 
-This personal-use build declares a specialUse foreground service for ongoing household power alarms.
-A public Google Play release would require review of that use case and production signing.
+This is a debug-signed personal-use APK with a specialUse foreground service for continuous household power alarms.

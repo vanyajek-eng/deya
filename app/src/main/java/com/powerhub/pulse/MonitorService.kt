@@ -13,90 +13,84 @@ class MonitorService: Service() {
     override fun onBind(intent: Intent?): IBinder?=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
         if(intent?.action=="STOP") {
-            Store.enabled(this,false)
-            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
-            return START_NOT_STICKY
+            Store.enabled(this,false);stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();return START_NOT_STICKY
         }
-        Store.init(this); Notifier.channels(this)
-        startForeground(1,Notifier.ongoing(this,"З’єднання з інвертором…"))
-        Store.enabled(this,true)
+        Store.init(this);Notifier.channels(this)
+        startForeground(1,Notifier.ongoing(this,"Підключення до Deye…"));Store.enabled(this,true)
         if(job?.isActive!=true) {
-            wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"DeyePulse:monitor").apply { setReferenceCounted(false); acquire(600000L) }
-            job=scope.launch { loop() }
+            wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"DeyePulse:monitor")
+                .apply {setReferenceCounted(false);acquire(600000L)}
+            job=scope.launch {loop()}
         }
         return START_STICKY
     }
+    private fun deliver(a: Alarm,s: Settings?) {
+        Notifier.notify(this,a)
+        if(s!=null && s.telegramToken.isNotBlank() && s.telegramChat.isNotBlank()) scope.launch {
+            try {Notifier.telegram(s,a)}
+            catch(e: Exception) {Store.log(this@MonitorService,"Помилка Telegram",e.message ?: "Не доставлено")}
+        }
+    }
     private suspend fun loop() {
-        val api=DeyeApi()
         var engine=AlarmEngine(Store.alarmState(this))
         var sourceId: String?=null
-        var disconnectedAt=0L
-        var connectionAlarm=false
-        Store.status("З’єднання з інвертором…",true)
+        var problemAt=0L
+        var problemSent=false
+        var config: Settings?=null
+        Store.status("Підключення до Deye…",true)
         while(currentCoroutineContext().isActive) {
             wake?.acquire(600000L)
             var interval=15
             try {
-                val s=Store.settings(this)
+                val s=Store.settings(this);config=s
                 interval=s.pollSeconds.coerceIn(3,300)
-                val id=listOf(s.source,s.baseUrl,s.inverterSn,s.jsonUrl,s.socKey,s.voltageKey,s.loadKey,s.gridKey).joinToString("|")
-                if(sourceId!=null && sourceId!=id) engine=AlarmEngine()
-                sourceId=id
-                val r=api.read(s)
-                Store.reading(this,r)
-                if(connectionAlarm) Store.log(this,"Зв’язок відновлено","Знову отримуємо дані інвертора.")
-                disconnectedAt=0; connectionAlarm=false
-                val age=((System.currentTimeMillis()-r.measuredAt)/1000).coerceAtLeast(0)
-                val message="Підключено • даним $age с"
-                Store.status(message,true)
-                getSystemService(NotificationManager::class.java).notify(1,Notifier.ongoing(this,message))
-                val alarms=engine.accept(r,s,SystemClock.elapsedRealtime())
-                Store.alarmState(this,engine.state())
-                for(a in alarms) {
-                    Notifier.notify(this,a)
-                    if(s.telegramToken.isNotBlank() && s.telegramChat.isNotBlank()) {
-                        scope.launch {
-                            try { Notifier.telegram(s,a) }
-                            catch(e: Exception) { Store.log(this@MonitorService,"Помилка Telegram",e.message ?: "Невідома помилка") }
-                        }
+                val identity=listOf(s.source,s.baseUrl,s.inverterSn,s.jsonUrl,s.socKey,s.gridKey,s.gridIsVoltage.toString()).joinToString("|")
+                if(sourceId!=null && identity!=sourceId) engine=AlarmEngine()
+                sourceId=identity
+                val snapshot=Sync.pull(this,s)
+                if(snapshot.fresh(System.currentTimeMillis(),s.maxAgeSeconds)) {
+                    if(problemSent) Store.log(this,"Дані знову оновлюються","Зв’язок із Deye відновлено.")
+                    problemAt=0L;problemSent=false
+                    engine.acceptSnapshot(snapshot,s,SystemClock.elapsedRealtime()).forEach {deliver(it,s)}
+                    Store.alarmState(this,engine.state())
+                } else {
+                    engine.gap()
+                    if(problemAt==0L) problemAt=SystemClock.elapsedRealtime()
+                    if(!problemSent && SystemClock.elapsedRealtime()-problemAt>=60000L) {
+                        problemSent=true
+                        deliver(Alarm("connection","Немає свіжих даних Deye","Стан мережі не підтверджений. Перевір логер та інтернет."),s)
                     }
                 }
-            } catch(e: CancellationException) { throw e }
+            } catch(e: CancellationException) {throw e}
             catch(e: Exception) {
-                engine.gap()
-                val text=e.message ?: "Не вдалося отримати дані"
-                Store.status(text,true)
-                getSystemService(NotificationManager::class.java).notify(1,Notifier.ongoing(this,"Немає актуальних даних • повторна спроба"))
-                if(disconnectedAt==0L) disconnectedAt=SystemClock.elapsedRealtime()
-                if(!connectionAlarm && SystemClock.elapsedRealtime()-disconnectedAt>=60000L) {
-                    connectionAlarm=true
-                    Notifier.notify(this,Alarm("connection","Втрачено зв’язок з Deye","Стан мережі невідомий. $text"))
+                engine.gap();Store.failure(this,e.message ?: "Помилка отримання даних")
+                if(problemAt==0L) problemAt=SystemClock.elapsedRealtime()
+                if(!problemSent && SystemClock.elapsedRealtime()-problemAt>=60000L) {
+                    problemSent=true
+                    deliver(Alarm("connection","Втрачено зв’язок з Deye","Стан мережі невідомий. Перевір підключення."),config)
                 }
             }
-            runCatching { PulseWidget.refresh(this) }
+            getSystemService(NotificationManager::class.java).notify(1,Notifier.ongoing(this,Store.state.value.status))
+            runCatching {PulseWidget.refresh(this)}
             delay(interval*1000L)
         }
     }
     override fun onDestroy() {
-        scope.cancel()
-        wake?.let { if(it.isHeld) it.release() }
-        Store.status("Моніторинг зупинено",false)
-        PulseWidget.refresh(this)
-        super.onDestroy()
+        scope.cancel();wake?.let {if(it.isHeld) it.release()}
+        Store.status("Постійний моніторинг призупинено",false);PulseWidget.refresh(this);super.onDestroy()
     }
     companion object {
-        fun start(c: Context) = ContextCompat.startForegroundService(c,Intent(c,MonitorService::class.java))
+        fun start(c: Context)=ContextCompat.startForegroundService(c,Intent(c,MonitorService::class.java))
         fun stop(c: Context) {
-            Store.enabled(c,false)
-            c.stopService(Intent(c,MonitorService::class.java))
-            Store.status("Моніторинг зупинено",false)
-            PulseWidget.refresh(c)
+            Store.enabled(c,false);c.stopService(Intent(c,MonitorService::class.java))
+            Store.status("Постійний моніторинг призупинено",false);PulseWidget.refresh(c)
         }
     }
 }
 class BootReceiver: BroadcastReceiver() {
     override fun onReceive(c: Context,i: Intent) {
-        if(i.action!=Intent.ACTION_BOOT_COMPLETED || !Store.enabled(c)) return
-        runCatching { if(Store.settings(c).boot) MonitorService.start(c) }
+        if(i.action!=Intent.ACTION_BOOT_COMPLETED) return
+        WidgetRefreshWorker.schedule(c)
+        if(Store.enabled(c)) runCatching {if(Store.settings(c).boot) MonitorService.start(c)}
     }
 }

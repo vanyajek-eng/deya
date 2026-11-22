@@ -16,11 +16,14 @@ class DeyeApi {
     private var token=""
     private var expires=0L
     private var credentials=""
-    fun read(s: Settings): Reading {
+    private var catalogId=""
+    private var catalogAt=0L
+    private var catalogKeys=emptyList<String>()
+    fun fetch(s: Settings): Snapshot {
         s.validate()
-        val r=if(s.source=="CLOUD") cloud(s) else local(s)
-        return r.validate(System.currentTimeMillis(),s.maxAgeSeconds*1000L)
+        return if(s.source=="CLOUD") cloud(s) else Snapshot.from(local(s)).copy(sn=s.inverterSn)
     }
+    fun read(s: Settings): Reading = fetch(s).requireReading().validate(System.currentTimeMillis(),s.maxAgeSeconds*1000L)
     private fun post(url: String,body: JSONObject,bearer: String=""): JSONObject {
         val builder=Request.Builder().url(url).post(body.toString().toRequestBody("application/json".toMediaType()))
         if(bearer.isNotBlank()) builder.header("Authorization","Bearer $bearer")
@@ -33,7 +36,7 @@ class DeyeApi {
             return j
         }
     }
-    private fun cloud(s: Settings): Reading {
+    private fun cloud(s: Settings): Snapshot {
         val fingerprint=listOf(s.baseUrl,s.appId,s.secret,s.email,s.password).joinToString("\u0000")
         if(token.isBlank() || expires<System.currentTimeMillis() || credentials!=fingerprint) {
             val hashed=MessageDigest.getInstance("SHA-256").digest(s.password.toByteArray(Charsets.UTF_8))
@@ -46,7 +49,16 @@ class DeyeApi {
         }
         val j=post(s.baseUrl+"/v1.0/device/latest",
             JSONObject().put("deviceList",JSONArray().put(s.inverterSn.trim())).put("deviceType","INVERTER"),token)
-        return parseCloud(j,s)
+        val catalogKey=s.baseUrl+"|"+s.appId+"|"+s.email+"|"+s.inverterSn
+        if(catalogId!=catalogKey || System.currentTimeMillis()-catalogAt>3600000L) {
+            catalogKeys=runCatching {
+                val catalog=post(s.baseUrl+"/v1.0/device/measurePoints",
+                    JSONObject().put("deviceSn",s.inverterSn.trim()).put("deviceType","INVERTER"),token).getJSONArray("measurePoints")
+                List(catalog.length()) { catalog.getString(it) }
+            }.getOrDefault(emptyList())
+            catalogId=catalogKey;catalogAt=System.currentTimeMillis()
+        }
+        return parseSnapshot(j,s,catalogKeys)
     }
     private fun local(s: Settings): Reading {
         val builder=Request.Builder().url(s.jsonUrl)
@@ -63,32 +75,25 @@ class DeyeApi {
     }
     companion object {
         fun parseCloud(j: JSONObject,s: Settings): Reading {
+            val snapshot=parseSnapshot(j,s)
+            require(snapshot.online) { "Логер офлайн. Стан мережі невідомий." }
+            return snapshot.requireReading()
+        }
+        fun parseSnapshot(j: JSONObject,s: Settings,catalog: List<String> = emptyList()): Snapshot {
             val devices=j.getJSONArray("deviceDataList")
-            val device=(0 until devices.length()).map { devices.getJSONObject(it) }
+            val d=(0 until devices.length()).map { devices.getJSONObject(it) }
                 .firstOrNull { it.optString("deviceSn")==s.inverterSn.trim() }
                 ?: error("Deye не повернув дані цього SN. Перевір доступ до інвертора.")
-            require(device.optInt("deviceState") in listOf(1,2)) { "Логер офлайн. Стан зовнішньої мережі невідомий." }
-            val data=device.getJSONArray("dataList")
-            val points=(0 until data.length()).map { data.getJSONObject(it) }.associateBy { it.getString("key") }
-            fun point(key: String): JSONObject = points[key]
-                ?: error("Немає показника $key. Доступні ключі: ${points.keys.joinToString().take(1200)}")
-            fun number(key: String): Float = point(key).getString("value").toFloatOrNull()
-                ?: error("Показник $key не є числом")
-            val loadPoint=point(s.loadKey)
-            val unit=loadPoint.optString("unit").ifBlank { s.cloudLoadUnit }
-            val load=number(s.loadKey)*when(unit.lowercase()) {
-                "kw" -> 1000f
-                "w" -> 1f
-                else -> error("Невідома одиниця потужності: $unit")
+            val a=d.optJSONArray("dataList") ?: JSONArray()
+            val points=List(a.length()) { index->
+                val p=a.getJSONObject(index)
+                MeasurePoint(p.getString("key"),if(p.isNull("value")) null else p.opt("value")?.toString(),p.optString("unit").takeUnless { it=="null" } ?: "")
             }
-            val grid=if(s.gridIsVoltage) number(s.gridKey)>=80f else
-                when(point(s.gridKey).getString("value").lowercase()) {
-                    "true","1","on" -> true
-                    "false","0","off" -> false
-                    else -> error("Невідомий стан мережі. Обери ключ напруги мережі.")
-                }
-            return Reading(number(s.socKey),number(s.voltageKey),load,grid,
-                device.getLong("collectionTime")*1000L,"Deye Cloud")
+            val present=points.map { it.key }.toSet()
+            val all=points+catalog.filter { it !in present }.map { MeasurePoint(it,null) }
+            val meta=d.keys().asSequence().filter { it!="dataList" }.associateWith { d.opt(it).toString() }
+            return Snapshot(d.optString("deviceSn"),d.optLong("collectionTime")*1000L,
+                d.optInt("deviceState",3),"Deye Cloud",all,meta,s)
         }
     }
 }

@@ -17,7 +17,9 @@ data class LogEntry(val at: Long, val title: String, val detail: String)
 data class ScreenState(
     val reading: Reading? = null, val running: Boolean = false,
     val status: String = "Підключи свій Deye", val lastReceived: Long = 0L,
-    val events: List<LogEntry> = emptyList(), val history: List<Float> = emptyList()
+    val events: List<LogEntry> = emptyList(), val history: List<Float> = emptyList(),
+    val snapshot: Snapshot? = null, val samples: List<HistorySample> = emptyList(),
+    val loading: Boolean = false, val lastError: String? = null
 )
 object Store {
     val state = MutableStateFlow(ScreenState())
@@ -32,14 +34,27 @@ object Store {
             val a=JSONArray(p.getString("events","[]"))
             List(a.length()) { i -> a.getJSONObject(i).let { LogEntry(it.getLong("at"),it.getString("title"),it.getString("detail")) } }
         }.getOrDefault(emptyList())
-        state.value=ScreenState(reading=reading,events=logs,lastReceived=p.getLong("received",0L))
+        val config=runCatching { settings(c) }.getOrDefault(Settings())
+        val snapshot=runCatching { Snapshot.parse(JSONObject(p.getString("snapshot","")!!),config) }.getOrNull()
+            ?: reading?.let { Snapshot.from(it) }
+        val samples=runCatching {
+            val a=JSONArray(p.getString("samples","[]"))
+            List(a.length()) { HistorySample.parse(a.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+        state.value=ScreenState(reading=reading,events=logs,lastReceived=p.getLong("received",0L),snapshot=snapshot,samples=samples)
     }
     fun settings(c: Context): Settings {
         val raw=prefs(c).getString("settings",null) ?: return Settings()
         return Settings.parse(JSONObject(decrypt(raw)))
     }
     fun save(c: Context,s: Settings) {
-        prefs(c).edit().putString("settings",encrypt(s.json().toString()))
+        val identity=s.source+"|"+s.baseUrl+"|"+s.inverterSn+"|"+s.jsonUrl
+        val previous=prefs(c).getString("sourceIdentity",identity)
+        if(previous!=identity) {
+            prefs(c).edit().remove("snapshot").remove("reading").remove("samples").remove("alarms").commit()
+            state.value=state.value.copy(reading=null,snapshot=null,samples=emptyList(),history=emptyList(),lastReceived=0)
+        }
+        prefs(c).edit().putString("settings",encrypt(s.json().toString())).putString("sourceIdentity",identity)
             .putInt("widgetMaxAge",s.maxAgeSeconds).putInt("widgetLowSoc",s.lowSoc).putInt("widgetHighWatts",s.highWatts).commit()
         PulseWidget.refresh(c)
     }
@@ -56,13 +71,47 @@ object Store {
     fun alarmState(c: Context) = runCatching { JSONObject(prefs(c).getString("alarms","{}")!!) }.getOrDefault(JSONObject())
     fun alarmState(c: Context,j: JSONObject) { prefs(c).edit().putString("alarms",j.toString()).apply() }
     @Synchronized fun status(text: String,running: Boolean = state.value.running) { state.value=state.value.copy(status=text,running=running) }
-    @Synchronized fun reading(c: Context,r: Reading) {
+    @Synchronized fun loading(v: Boolean) { state.value=state.value.copy(loading=v) }
+    @Synchronized fun failure(c: Context,text: String) {
+        state.value=state.value.copy(status=text,lastError=text)
+        PulseWidget.refresh(c)
+    }
+    @Synchronized fun reading(c: Context,r: Reading) { snapshot(c,Snapshot.from(r)) }
+    @Synchronized fun snapshot(c: Context,s: Snapshot) {
         val now=System.currentTimeMillis()
         val old=state.value
-        val history=if(old.reading?.measuredAt != r.measuredAt) (old.history+r.loadWatts).takeLast(60) else old.history
-        state.value=old.copy(reading=r,lastReceived=now,history=history)
-        prefs(c).edit().putString("reading",r.json().toString()).putLong("received",now).apply()
+        val validTime=s.measuredAt>0 && s.measuredAt<=now+60000L
+        val latest=old.samples.lastOrNull()?.at ?: 0L
+        val numeric=s.points.any { it.number!=null }
+        val samples=if(validTime && numeric && s.online && s.measuredAt>latest)
+            (old.samples+HistorySample.from(s)).takeLast(288) else old.samples
+        val compatible=runCatching { s.requireReading() }.getOrNull()
+        val loadHistory=samples.mapNotNull { sample ->
+            sample.values.entries.firstOrNull { Snapshot.normalize(it.key)==Snapshot.normalize(s.mapping.loadKey) }?.value?.toFloat()?.div(
+                if(s.find(s.mapping.loadKey,"TotalConsumptionPower")?.unit?.lowercase()=="kw") 1f else 1000f)
+        }
+        state.value=old.copy(reading=compatible,snapshot=s,lastReceived=now,samples=samples,history=loadHistory,lastError=null)
+        val edit=prefs(c).edit().putString("snapshot",s.json().toString()).putLong("received",now)
+        compatible?.let { edit.putString("reading",it.json().toString()) }
+        if(samples!==old.samples) {
+            val a=JSONArray();samples.forEach { a.put(it.json()) };edit.putString("samples",a.toString())
+        }
+        edit.apply()
         PulseWidget.refresh(c)
+    }
+    fun favorites(c: Context): Set<String> = prefs(c).getStringSet("favorites",setOf("SOC","BatteryVoltage","TotalConsumptionPower","GridVoltageL1L2"))!!.toSet()
+    fun favorite(c: Context,key: String) {
+        val set=favorites(c).toMutableSet()
+        if(!set.add(key)) set.remove(key)
+        prefs(c).edit().putStringSet("favorites",set).apply()
+    }
+    fun widgetKeys(c: Context): List<String> {
+        val raw=prefs(c).getString("widgetKeys",null)
+        return runCatching { val a=JSONArray(raw ?: """["SOC","TotalConsumptionPower","BatteryVoltage","TotalDCInputPower"]""");List(a.length()) { a.getString(it) } }
+            .getOrDefault(listOf("SOC","TotalConsumptionPower","BatteryVoltage","TotalDCInputPower"))
+    }
+    fun widgetKeys(c: Context,keys: List<String>) {
+        val a=JSONArray();keys.take(4).forEach { a.put(it) };prefs(c).edit().putString("widgetKeys",a.toString()).apply();PulseWidget.refresh(c)
     }
     @Synchronized fun log(c: Context,title: String,detail: String) {
         val logs=(listOf(LogEntry(System.currentTimeMillis(),title,detail))+state.value.events).take(100)

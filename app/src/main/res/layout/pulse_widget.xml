@@ -1,28 +1,27 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="14dp" android:background="@drawable/widget_background">
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="DEYE PULSE  ⚡" android:textColor="#B9F56B" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12"/>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:orientation="vertical">
-            <TextView android:id="@+id/widget_soc" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#B9F56B" android:textSize="30sp" android:textStyle="bold" android:maxLines="1"/>
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Заряд АКБ" android:textColor="#93A4B3" android:textSize="10sp"/>
-        </LinearLayout>
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.2" android:orientation="vertical">
-            <TextView android:id="@+id/widget_load" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textSize="19sp" android:textStyle="bold" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="12sp" android:autoSizeMaxTextSize="19sp" android:autoSizeStepGranularity="1sp"/>
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Споживання" android:textColor="#93A4B3" android:textSize="10sp"/>
-        </LinearLayout>
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-            <TextView android:id="@+id/widget_volts" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textSize="19sp" android:textStyle="bold" android:maxLines="1"/>
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Напруга АКБ" android:textColor="#93A4B3" android:textSize="10sp"/>
-        </LinearLayout>
-    </LinearLayout>
-    <ProgressBar android:id="@+id/widget_battery" style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="8dp" android:progressDrawable="@drawable/widget_progress"/>
-    <TextView android:id="@+id/widget_grid" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="6dp" android:text="Стан мережі невідомий" android:textColor="#93A4B3" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"/>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
-        <TextView android:id="@+id/widget_time" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Ще немає вимірів" android:textColor="#93A4B3" android:textSize="10sp" android:maxLines="1"/>
-        <Chronometer android:id="@+id/widget_age" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#93A4B3" android:textSize="10sp" android:visibility="gone"/>
-    </LinearLayout>
+android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+android:orientation="vertical" android:padding="16dp" android:background="@drawable/widget_background">
+<LinearLayout android:layout_width="match_parent" android:layout_height="28dp" android:orientation="horizontal" android:gravity="center_vertical">
+<TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="DEYE PULSE" android:textColor="#7DEDD0" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12"/>
+<TextView android:id="@+id/widget_refresh" android:layout_width="44dp" android:layout_height="28dp" android:gravity="center" android:text="↻" android:contentDescription="Оновити дані віджета" android:textColor="#7DEDD0" android:textSize="25sp"/>
+</LinearLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp"><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="6dp">
+<TextView android:id="@+id/widget_label1" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#8294AB" android:textSize="10sp" android:maxLines="1" android:ellipsize="end"/>
+<TextView android:id="@+id/widget_value1" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#7DEDD0" android:textSize="25sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="11sp" android:autoSizeMaxTextSize="25sp" android:autoSizeStepGranularity="1sp" android:layout_marginTop="3dp" android:textStyle="bold"/>
+</LinearLayout><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="6dp">
+<TextView android:id="@+id/widget_label2" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#8294AB" android:textSize="10sp" android:maxLines="1" android:ellipsize="end"/>
+<TextView android:id="@+id/widget_value2" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textSize="25sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="11sp" android:autoSizeMaxTextSize="25sp" android:autoSizeStepGranularity="1sp" android:layout_marginTop="3dp" android:textStyle="bold"/>
+</LinearLayout></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp"><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="6dp">
+<TextView android:id="@+id/widget_label3" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#8294AB" android:textSize="10sp" android:maxLines="1" android:ellipsize="end"/>
+<TextView android:id="@+id/widget_value3" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textSize="25sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="11sp" android:autoSizeMaxTextSize="25sp" android:autoSizeStepGranularity="1sp" android:layout_marginTop="3dp" android:textStyle="bold"/>
+</LinearLayout><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="6dp">
+<TextView android:id="@+id/widget_label4" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#8294AB" android:textSize="10sp" android:maxLines="1" android:ellipsize="end"/>
+<TextView android:id="@+id/widget_value4" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#FFFFFF" android:textSize="25sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="11sp" android:autoSizeMaxTextSize="25sp" android:autoSizeStepGranularity="1sp" android:layout_marginTop="3dp" android:textStyle="bold"/>
+</LinearLayout></LinearLayout>
+<ProgressBar android:id="@+id/widget_battery" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="8dp" android:progressDrawable="@drawable/widget_progress"/>
+<TextView android:id="@+id/widget_grid" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="Підключи Deye Cloud" android:textColor="#8294AB" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"/>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
+<TextView android:id="@+id/widget_time" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Ще немає вимірів" android:textColor="#8294AB" android:textSize="10sp" android:maxLines="1"/>
+<Chronometer android:id="@+id/widget_age" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#8294AB" android:textSize="10sp" android:visibility="gone"/>
+</LinearLayout>
 </LinearLayout>

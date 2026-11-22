@@ -29,10 +29,10 @@ data class Settings(
     val inverterSn: String = "",
     val jsonUrl: String = "", val jsonHeaders: String = "{}",
     val socKey: String = "SOC", val voltageKey: String = "BatteryVoltage",
-    val loadKey: String = "TotalConsumptionPower", val gridKey: String = "GridVoltage",
+    val loadKey: String = "TotalConsumptionPower", val gridKey: String = "GridVoltageL1L2",
     val cloudLoadUnit: String = "W", val gridIsVoltage: Boolean = true,
     val lowSoc: Int = 20, val highWatts: Int = 3000,
-    val pollSeconds: Int = 15, val confirmSeconds: Int = 30, val maxAgeSeconds: Int = 600,
+    val pollSeconds: Int = 15, val confirmSeconds: Int = 30, val maxAgeSeconds: Int = 900,
     val telegramToken: String = "", val telegramChat: String = "", val boot: Boolean = true
 ) {
     fun validate() {
@@ -63,10 +63,10 @@ data class Settings(
             password=j.optString("password"),inverterSn=j.optString("inverterSn"),jsonUrl=j.optString("jsonUrl"),
             jsonHeaders=j.optString("jsonHeaders","{}"),socKey=j.optString("socKey","SOC"),
             voltageKey=j.optString("voltageKey","BatteryVoltage"),loadKey=j.optString("loadKey","TotalConsumptionPower"),
-            gridKey=j.optString("gridKey","GridVoltage"),cloudLoadUnit=j.optString("cloudLoadUnit","W"),
+            gridKey=j.optString("gridKey","GridVoltageL1L2"),cloudLoadUnit=j.optString("cloudLoadUnit","W"),
             gridIsVoltage=j.optBoolean("gridIsVoltage",true),lowSoc=j.optInt("lowSoc",20),
             highWatts=j.optInt("highWatts",3000),pollSeconds=j.optInt("pollSeconds",15),
-            confirmSeconds=j.optInt("confirmSeconds",30),maxAgeSeconds=j.optInt("maxAgeSeconds",600),
+            confirmSeconds=j.optInt("confirmSeconds",30),maxAgeSeconds=j.optInt("maxAgeSeconds",900),
             telegramToken=j.optString("telegramToken"),telegramChat=j.optString("telegramChat"),boot=j.optBoolean("boot",true)
         )
     }
@@ -81,28 +81,38 @@ class AlarmEngine(saved: JSONObject = JSONObject()) {
     private var high = saved.optBoolean("high",false)
     fun gap() { candidate=null; since=0; lastObserved=0 }
     fun state() = JSONObject().apply { stable?.let { put("stable",it) }; put("low",low); put("high",high) }
-    fun accept(r: Reading, s: Settings, now: Long): List<Alarm> {
-        val events = mutableListOf<Alarm>()
-        if (lastObserved != 0L && now - lastObserved > (s.pollSeconds * 3000L + 30000L)) gap()
-        lastObserved = now
-        if (stable == null && r.grid) stable = true
-        if (stable != r.grid) {
-            if (candidate != r.grid) { candidate=r.grid; since=r.measuredAt }
-            if (r.measuredAt - since >= s.confirmSeconds * 1000L) {
-                stable=r.grid; candidate=null
-                events += Alarm("grid",if(r.grid) "Світло повернулося" else "Зовнішня мережа відсутня",
-                    if(r.grid) "Інвертор знову бачить мережу." else "Живлення від акумуляторів. Перевір навантаження.")
-            }
-        } else { candidate=null; since=0 }
-        if(r.soc > s.lowSoc + 2) low=false
-        if(r.soc <= s.lowSoc && !low) {
-            low=true
-            events += Alarm("battery","Низький заряд АКБ","Залишилося ${r.soc.toInt()}%. Поріг: ${s.lowSoc}%.")
+    fun accept(r: Reading,s: Settings,now: Long): List<Alarm> =
+        evaluate(r.soc,r.loadKw*1000f,r.gridPresent,r.measuredAt,s,now)
+    fun acceptSnapshot(snapshot: Snapshot,s: Settings,now: Long): List<Alarm> {
+        if(!snapshot.fresh(System.currentTimeMillis(),s.maxAgeSeconds)) { gap();return emptyList() }
+        val m=snapshot.metrics()
+        return evaluate(m.soc,m.loadWatts,m.grid,snapshot.measuredAt,s,now)
+    }
+    private fun evaluate(soc: Float?,watts: Float?,grid: Boolean?,at: Long,s: Settings,now: Long): List<Alarm> {
+        val events=mutableListOf<Alarm>()
+        if(lastObserved!=0L && now-lastObserved>s.pollSeconds*3000L+30000L) gap()
+        lastObserved=now
+        if(grid==null) { candidate=null;since=0 }
+        else {
+            if(stable==null && grid) stable=true
+            if(stable!=grid) {
+                if(candidate!=grid) { candidate=grid;since=at }
+                if(at-since>=s.confirmSeconds*1000L) {
+                    stable=grid;candidate=null
+                    events+=Alarm("grid",if(grid) "Світло повернулося" else "Зовнішня мережа відсутня",
+                        if(grid) "Інвертор знову бачить мережу." else "Живлення від акумуляторів. Перевір навантаження.")
+                }
+            } else { candidate=null;since=0 }
         }
-        if(r.grid || r.loadWatts < s.highWatts - 200) high=false
-        if(!r.grid && r.loadWatts >= s.highWatts && !high) {
-            high=true
-            events += Alarm("load","Високе споживання від АКБ","Навантаження ${r.loadWatts.toInt()} Вт. Ліміт: ${s.highWatts} Вт.")
+        if(soc!=null) {
+            if(soc>s.lowSoc+2) low=false
+            if(soc<=s.lowSoc && !low) {
+                low=true;events+=Alarm("battery","Низький заряд АКБ","Залишилося ${soc.toInt()}%. Поріг: ${s.lowSoc}%.")
+            }
+        }
+        if(grid==true || (watts!=null && watts<s.highWatts-200)) high=false
+        if(grid==false && watts!=null && watts>=s.highWatts && !high) {
+            high=true;events+=Alarm("load","Високе споживання від АКБ","Навантаження ${watts.toInt()} Вт. Ліміт: ${s.highWatts} Вт.")
         }
         return events
     }
