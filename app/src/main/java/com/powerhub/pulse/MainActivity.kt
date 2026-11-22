@@ -180,6 +180,16 @@ private fun App(onPermission: ()->Unit) {
                             Text(if(state.running) "Зупинити моніторинг" else "Увімкнути моніторинг",fontWeight=FontWeight.Bold)
                         }
                         OutlinedButton(onClick={tab=2},modifier=Modifier.fillMaxWidth()) { Text("Підключення та перевірка") }
+                        OutlinedButton(onClick={
+                            message=try {
+                                if(PulseWidget.pin(c)) "Підтвердь додавання віджета на головний екран."
+                                else "Затисни порожнє місце на головному екрані → Віджети → Deye Pulse."
+                            } catch(e: Exception) { "Додай вручну: головний екран → Віджети → Deye Pulse." }
+                        },modifier=Modifier.fillMaxWidth()) {
+                            Icon(Icons.Rounded.Widgets,null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Додати віджет на головний екран")
+                        }
                         Text("Пороги: АКБ ≤ ${s.lowSoc}% • без мережі ≥ ${s.highWatts} Вт",color=Muted,fontSize=12.sp)
                     }
                     1 -> {
@@ -282,7 +292,7 @@ private fun App(onPermission: ()->Unit) {
                             withContext(Dispatchers.IO) {s.validate();Store.save(c,s)}
                             "Налаштування збережено."
                         }},enabled=!busy,modifier=Modifier.fillMaxWidth().height(52.dp)) {Text("Зберегти налаштування")}
-                        Text("Deye Pulse 1.0 • новий окремий додаток",color=Muted,fontSize=11.sp)
+                        Text("Deye Pulse 1.1 • віджет на головний екран",color=Muted,fontSize=11.sp)
                     }
                 }
                 Spacer(Modifier.height(20.dp))

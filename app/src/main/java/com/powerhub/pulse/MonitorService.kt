@@ -73,6 +73,7 @@ class MonitorService: Service() {
                     Notifier.notify(this,Alarm("connection","Втрачено зв’язок з Deye","Стан мережі невідомий. $text"))
                 }
             }
+            runCatching { PulseWidget.refresh(this) }
             delay(interval*1000L)
         }
     }
@@ -89,6 +90,7 @@ class MonitorService: Service() {
             Store.enabled(c,false)
             c.stopService(Intent(c,MonitorService::class.java))
             Store.status("Моніторинг зупинено",false)
+            PulseWidget.refresh(c)
         }
     }
 }

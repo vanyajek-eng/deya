@@ -21,9 +21,11 @@ data class ScreenState(
 )
 object Store {
     val state = MutableStateFlow(ScreenState())
+    private var initialized=false
     private fun prefs(c: Context) = c.getSharedPreferences("pulse",Context.MODE_PRIVATE)
     @Synchronized fun init(c: Context) {
-        if(state.value.events.isNotEmpty() || state.value.reading != null) return
+        if(initialized) return
+        initialized=true
         val p=prefs(c)
         val reading=runCatching { Reading.parse(JSONObject(p.getString("reading","")!!)) }.getOrNull()
         val logs=runCatching {
@@ -36,7 +38,19 @@ object Store {
         val raw=prefs(c).getString("settings",null) ?: return Settings()
         return Settings.parse(JSONObject(decrypt(raw)))
     }
-    fun save(c: Context,s: Settings) { prefs(c).edit().putString("settings",encrypt(s.json().toString())).commit() }
+    fun save(c: Context,s: Settings) {
+        prefs(c).edit().putString("settings",encrypt(s.json().toString()))
+            .putInt("widgetMaxAge",s.maxAgeSeconds).putInt("widgetLowSoc",s.lowSoc).putInt("widgetHighWatts",s.highWatts).commit()
+        PulseWidget.refresh(c)
+    }
+    fun widgetLimits(c: Context): Triple<Int,Int,Int> {
+        val p=prefs(c)
+        if(!p.contains("widgetMaxAge")) {
+            val s=runCatching { settings(c) }.getOrDefault(Settings())
+            p.edit().putInt("widgetMaxAge",s.maxAgeSeconds).putInt("widgetLowSoc",s.lowSoc).putInt("widgetHighWatts",s.highWatts).apply()
+        }
+        return Triple(p.getInt("widgetMaxAge",600),p.getInt("widgetLowSoc",20),p.getInt("widgetHighWatts",3000))
+    }
     fun enabled(c: Context) = prefs(c).getBoolean("enabled",false)
     fun enabled(c: Context,v: Boolean) { prefs(c).edit().putBoolean("enabled",v).commit() }
     fun alarmState(c: Context) = runCatching { JSONObject(prefs(c).getString("alarms","{}")!!) }.getOrDefault(JSONObject())
