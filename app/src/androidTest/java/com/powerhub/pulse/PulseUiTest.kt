@@ -40,9 +40,15 @@ class PulseUiTest {
         }
         rule.waitForIdle()
     }
+    private fun emitImage(file: File) {
+        val chunks=android.util.Base64.encodeToString(file.readBytes(),android.util.Base64.NO_WRAP).chunked(1800)
+        chunks.forEachIndexed {index,value -> android.util.Log.i("PULSE_UI",file.name+"|"+index+"|"+chunks.size+"|"+value) }
+    }
     private fun screenshot(name: String) {
         val dir=File(c.getExternalFilesDir(null),"ui-validation").apply {mkdirs()}
-        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(dir,name))
+        val file=File(dir,name)
+        Assert.assertTrue(UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(file))
+        emitImage(file)
     }
     @Test fun overviewAndUnknownParameterRender() {
         rule.onNodeWithText("Енергія твого дому").assertIsDisplayed()
@@ -68,7 +74,9 @@ class PulseUiTest {
                 val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
                 view.draw(Canvas(bitmap))
                 val dir=File(c.getExternalFilesDir(null),"ui-validation").apply {mkdirs()}
-                File(dir,if(compact) "widget-compact.png" else "widget.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+                val file=File(dir,if(compact) "widget-compact.png" else "widget.png")
+                file.outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+                emitImage(file)
                 bitmap.recycle()
             }
         }

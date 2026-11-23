@@ -69,9 +69,11 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
+            adb logcat -G 16M
             gradle connectedDebugAndroidTest
             mkdir -p ui-validation
-            adb pull /sdcard/Android/data/com.powerhub.pulse/files/ui-validation ui-validation
+            adb logcat -d -s PULSE_UI:I -v raw > /tmp/pulse-ui.log
+            python3 scripts/decode_ui_images.py /tmp/pulse-ui.log ui-validation
       - uses: actions/upload-artifact@v4
         if: always()
         with:
