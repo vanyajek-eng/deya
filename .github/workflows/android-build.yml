@@ -37,6 +37,10 @@ jobs:
           if [ ! -s "$PULSE_KEYSTORE_PATH" ]; then
             keytool -genkeypair -keystore "$PULSE_KEYSTORE_PATH" -storetype JKS -storepass android -keypass android -alias pulse -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=Deye Pulse Personal"
           fi
+      - name: Prevent accidental signing key changes
+        run: |
+          CERT_SHA=$(keytool -exportcert -alias pulse -keystore "$PULSE_KEYSTORE_PATH" -storepass android | sha256sum | cut -d ' ' -f1)
+          test "$CERT_SHA" = "c0b402aded8f7299f92d90beb2f714b21175a107cca0c76b0174034cc53edce0" || { echo "Original signing key is unavailable. Refusing to publish an incompatible APK."; exit 1; }
       - name: Signing key identity
         id: signing
         run: echo "sha=$(sha256sum "$PULSE_KEYSTORE_PATH" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
