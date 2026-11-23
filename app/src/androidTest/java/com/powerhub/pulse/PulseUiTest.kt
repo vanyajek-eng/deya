@@ -42,7 +42,7 @@ class PulseUiTest {
     }
     private fun emitImage(file: File) {
         val chunks=android.util.Base64.encodeToString(file.readBytes(),android.util.Base64.NO_WRAP).chunked(1800)
-        chunks.forEachIndexed {index,value -> android.util.Log.i("PULSE_UI",file.name+"|"+index+"|"+chunks.size+"|"+value) }
+        chunks.forEachIndexed {index,value -> android.util.Log.i("PULSE_UI",file.name+"|"+index+"|"+chunks.size+"|"+value);Thread.sleep(30) }
     }
     private fun screenshot(name: String) {
         val dir=File(c.getExternalFilesDir(null),"ui-validation").apply {mkdirs()}
