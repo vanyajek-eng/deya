@@ -68,12 +68,10 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: gradle connectedDebugAndroidTest
-      - name: Collect UI checks
-        if: always()
-        run: |
-          mkdir -p ui-validation
-          adb pull /sdcard/Android/data/com.powerhub.pulse/files/ui-validation ui-validation || true
+          script: |
+            gradle connectedDebugAndroidTest
+            mkdir -p ui-validation
+            adb pull /sdcard/Android/data/com.powerhub.pulse/files/ui-validation ui-validation
       - uses: actions/upload-artifact@v4
         if: always()
         with:
