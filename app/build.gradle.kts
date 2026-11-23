@@ -3,16 +3,28 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+val pulseKeystorePath = System.getenv("PULSE_KEYSTORE_PATH")
 android {
     namespace = "com.powerhub.pulse"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.powerhub.pulse"
+        applicationId = "com.powerhub.pulse.next"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    if (pulseKeystorePath != null) {
+        signingConfigs {
+            create("personal") {
+                storeFile = file(pulseKeystorePath)
+                storePassword = "android"
+                keyAlias = "pulse"
+                keyPassword = "android"
+            }
+        }
+        buildTypes.getByName("debug").signingConfig = signingConfigs.getByName("personal")
     }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
