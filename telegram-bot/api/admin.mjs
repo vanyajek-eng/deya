@@ -3,6 +3,7 @@ import { config, Telegram, Deye } from '../worker/api.mjs';
 import { CloudStore } from '../worker/store.mjs';
 import { Bot } from '../worker/bot.mjs';
 import { metrics } from '../worker/core.mjs';
+import { tuyaConfig, TuyaClient } from '../worker/tuya.mjs';
 export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');
   const expected=Buffer.from('Bearer '+(process.env.ADMIN_SECRET || ''));
@@ -10,6 +11,12 @@ export default async function handler(req,res) {
   if(!process.env.ADMIN_SECRET || actual.length!==expected.length || !timingSafeEqual(actual,expected)) return res.status(404).json({error:'Not found'});
   if(req.method!=='POST') return res.status(405).json({error:'POST required'});
   try {
+    if(req.body?.action==='tuya') {
+      const c=tuyaConfig();if(!c) return res.status(200).json({configured:false});
+      const api=new TuyaClient(c),relay=await api.details(c.relayId),plug=await api.details(c.plugId);
+      await api.validatePlug();const plugOn=await api.plugState();
+      return res.status(200).json({configured:true,relay,plug,plugOn,readOnly:true});
+    }
     const c=config();const telegram=new Telegram(c.token),deye=new Deye(c),store=new CloudStore();
     await store.load();
     const me=await telegram.call('getMe');

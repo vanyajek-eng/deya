@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { authorized, privateChatId, clock, defaults, escapeHtml, evolve, metrics, render } from './core.mjs';
 import { ApiError } from './api.mjs';
+import { boilerText } from './boiler.mjs';
 export class Bot {
   constructor({store,deye,telegram,chat,now=()=>Date.now(),pollSeconds=15}) {
     Object.assign(this,{store,deye,telegram,chat,now});this.record=store.value;this.snapshot=this.record.snapshot ?? null;
@@ -73,7 +74,7 @@ export class Bot {
       if(!found) return;
       const {item,target}=found;
       try {
-        await this.telegram.call('sendMessage',{chat_id:target,text:item.title+'\n'+item.detail+'\n\nПодія: '+clock(item.at)+'\nВимір Deye: '+clock(item.measuredAt)+(this.now()-item.at>60000 ? '\nДоставлено із затримкою: це стан на момент події.' : '')});
+        await this.telegram.call('sendMessage',{chat_id:target,text:item.title+'\n'+item.detail+'\n\nПодія: '+clock(item.at)+'\n'+(item.source==='Tuya' ? 'Перевірка Tuya: ' : 'Вимір Deye: ')+clock(item.measuredAt)+(this.now()-item.at>60000 ? '\nДоставлено із затримкою: це стан на момент події.' : '')});
         item.recipients=item.recipients.filter(id=>id!==target);
         this.record.queue=this.record.queue.filter(e=>e.recipients?.length);
         delete this.record.deliveryCooldowns[target];this.record.deliveryError=null;await this.persist();
@@ -132,9 +133,18 @@ export class Bot {
     if(cb) await this.telegram.call('answerCallbackQuery',{callback_query_id:cb.id,text:'Оновлюю…'}).catch(()=>{});
     else {
       const command=(update.message.text || '').trim().split(/\s/)[0].split('@')[0];
-      action=({'/start':'home','/dashboard':'home','/status':'home','/battery':'battery:0','/grid':'grid:0','/solar':'solar:0','/parameters':'all:0','/events':'events','/settings':'settings','/help':'help','/stop':'stop'})[command];
+      action=({'/start':'home','/dashboard':'home','/status':'home','/battery':'battery:0','/grid':'grid:0','/solar':'solar:0','/parameters':'all:0','/events':'events','/settings':'settings','/help':'help','/stop':'stop','/boiler':'boiler','/boiler_pause':'boiler_pause','/boiler_resume':'boiler_resume'})[command];
     }
     if(!action) {this.record.cursor=update.update_id;await this.persist();return;}
+    if(['boiler','boiler_pause','boiler_resume'].includes(action)) {
+      if(owner) {
+        if(action==='boiler_pause') this.record.boilerPaused=true;
+        if(action==='boiler_resume') this.record.boilerPaused=false;
+        this.record.cursor=update.update_id;await this.persist();
+        await this.telegram.call('sendMessage',{chat_id:this.chat,text:boilerText(this.record)});
+      } else {this.record.cursor=update.update_id;await this.persist();}
+      return;
+    }
     const panel=this.panel(chat);
     if(action==='stop') {
       if(owner) {this.record.settings.alerts=false;this.record.queue=[];}

@@ -3,6 +3,8 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { config, Telegram, Deye } from './api.mjs';
 import { CloudStore, BlobPreconditionFailedError } from './store.mjs';
 import { Bot } from './bot.mjs';
+import { tuyaConfig, TuyaClient } from './tuya.mjs';
+import { BoilerGuard } from './boiler.mjs';
 const settings=config();
 const stop=new AbortController();
 process.on('SIGTERM',()=>stop.abort());process.on('SIGINT',()=>stop.abort());
@@ -17,6 +19,9 @@ await store.load();
 const webhook=await telegram.call('getWebhookInfo');
 if(webhook.url) throw new Error('Бот уже має webhook. Спочатку узгодь перенесення на цей процес.');
 const bot=new Bot({store,deye,telegram,chat:settings.chat,pollSeconds:settings.poll});
+let boiler;
+try {const c=tuyaConfig();if(c) boiler=new BoilerGuard(new TuyaClient(c));}
+catch {bot.record.boiler={mode:'unknown',message:'Помилка конфігурації Tuya; автовимкнення не запущене.'};console.error('Boiler configuration invalid');}
 const inbox=[];
 // One poller, sequential handling, durable offset. No parallel getUpdates consumer.
 const input=(async()=>{
@@ -41,7 +46,7 @@ try {
         console.error('Command failed',e.code || 'NETWORK');
       } finally {entry.resolve();}
     }
-    try {await bot.tick();} catch(e) {
+    try {await bot.tick();if(boiler) await boiler.tick(bot);} catch(e) {
       if(e instanceof BlobPreconditionFailedError) throw e;
       console.error('Monitor temporarily unavailable',e.code || 'NETWORK');
     }
