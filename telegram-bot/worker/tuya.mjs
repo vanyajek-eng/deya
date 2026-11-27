@@ -6,7 +6,7 @@ export class TuyaError extends Error {
 export function tuyaConfig(env=process.env) {
   if(env.TUYA_BOILER_ENABLED!=='true') return null;
   const c={clientId:env.TUYA_CLIENT_ID,secret:env.TUYA_CLIENT_SECRET,
-    base:env.TUYA_BASE_URL || 'https://openapi.tuyaeu.com',
+    base:env.TUYA_BASE_URL || 'https://openapi.tuyaeu.com',loadControl:true,
     relayId:env.TUYA_GRID_RELAY_ID,plugId:env.TUYA_BOILER_PLUG_ID,code:env.TUYA_PLUG_SWITCH_CODE || 'switch_1'};
   if(!c.clientId || !c.secret) throw new Error('Немає ключів Tuya');
   if(!['https://openapi.tuyaeu.com','https://openapi-weaz.tuyaeu.com'].includes(c.base)) throw new Error('Невідомий центр Tuya');
@@ -19,6 +19,19 @@ export function signedHeaders(c,method,path,body='',token='',now=Date.now()) {
   const stringToSign=method+'\n'+createHash('sha256').update(body).digest('hex')+'\n\n'+path;
   const sign=createHmac('sha256',c.secret).update(c.clientId+token+t+stringToSign).digest('hex').toUpperCase();
   return {client_id:c.clientId,t,sign,sign_method:'HMAC-SHA256',...(token ? {access_token:token} : {}),'Content-Type':'application/json'};
+}
+// Single-phase dlq 8-byte frame; matches the HA Tuya raw electricity decoder.
+// Do not use the separate numeric `power` DP: this relay never updates it.
+export function relayMeasurement(properties,now=Date.now()) {
+  const p=properties?.find(p=>p.code==='phase_a');
+  if(!p || typeof p.value!=='string' || !/^[A-Za-z0-9+/]{11}=$/.test(p.value)) throw new TuyaError('POWER_INVALID');
+  const b=Buffer.from(p.value,'base64');
+  if(b.length!==8 || b.toString('base64')!==p.value) throw new TuyaError('POWER_INVALID');
+  if(properties.some(p=>['phase_b','phase_c'].includes(p.code) && p.value)) throw new TuyaError('POWER_MULTIPHASE_UNSUPPORTED');
+  const measuredAt=Number(p.time),voltage=b.readUInt16BE(0)/10,current=b.readUIntBE(2,3)/1000,watts=b.readUIntBE(5,3);
+  if(!Number.isFinite(measuredAt) || now-measuredAt>90000 || measuredAt>now+10000) throw new TuyaError('POWER_STALE');
+  if(voltage<80 || voltage>300 || current>150 || watts>45000 || watts>voltage*current*1.2+100) throw new TuyaError('POWER_IMPLAUSIBLE');
+  return {watts,voltage,current,measuredAt};
 }
 export class TuyaClient {
   constructor(c,fetcher=fetch) {this.c=c;this.fetcher=fetcher;this.token='';this.expires=0;this.switchValidatedAt=0;}
@@ -61,6 +74,10 @@ export class TuyaClient {
     const value=Array.isArray(status) ? status.find(p=>p.code===this.c.code)?.value : undefined;
     if(typeof value!=='boolean') throw new TuyaError('UNKNOWN_PLUG_STATE');
     return value;
+  }
+  async relayPower(now=Date.now()) {
+    const r=await this.request('GET','/v2.0/cloud/thing/'+this.c.relayId+'/shadow/properties');
+    return relayMeasurement(r?.properties,now);
   }
   async switchPower(value) {
     if(typeof value!=='boolean') throw new TuyaError('INVALID_SWITCH_VALUE');
