@@ -10,8 +10,8 @@ import org.json.JSONArray
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-class DeyeApi {
-    private val client=OkHttpClient.Builder().callTimeout(20,TimeUnit.SECONDS)
+class DeyeApi(suppliedClient: OkHttpClient? = null) {
+    private val client=suppliedClient ?: OkHttpClient.Builder().callTimeout(20,TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build()
     private var token=""
     private var expires=0L
@@ -32,21 +32,25 @@ class DeyeApi {
             check(it.isSuccessful) { "Deye Cloud HTTP ${it.code}" }
             val j=JSONObject(it.body?.string() ?: error("Порожня відповідь Deye"))
             if(!j.optBoolean("success",false)) { token=""; expires=0 }
-            check(j.optBoolean("success",false)) { "Deye API: ${j.optString("code","ERROR")}. Перевір сервер, доступ і дані акаунта." }
+            check(j.optBoolean("success",false)) { "Deye API: ${j.optString("code","ERROR")}. Перевір сервер, дані акаунта та дозвіл API на керування." }
             return j
         }
     }
-    private fun cloud(s: Settings): Snapshot {
-        val fingerprint=listOf(s.baseUrl,s.appId,s.secret,s.email,s.password).joinToString("\u0000")
+    private fun authenticate(s: Settings) {
+        s.validate()
+        val fingerprint=listOf(s.baseUrl,s.appId,s.secret,s.email,s.password,s.companyId).joinToString("\u0000")
         if(token.isBlank() || expires<System.currentTimeMillis() || credentials!=fingerprint) {
             val hashed=MessageDigest.getInstance("SHA-256").digest(s.password.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             val url=(s.baseUrl+"/v1.0/account/token").toHttpUrl().newBuilder().addQueryParameter("appId",s.appId.trim()).build()
-            val auth=post(url.toString(),JSONObject().put("appSecret",s.secret.trim()).put("email",s.email.trim()).put("password",hashed))
+            val auth=post(url.toString(),JSONObject().put("appSecret",s.secret.trim()).put("email",s.email.trim()).put("password",hashed).apply {if(s.companyId.isNotBlank()) put("companyId",s.companyId.trim().toLong())})
             token=auth.getString("accessToken")
             expires=System.currentTimeMillis()+(auth.optLong("expiresIn",3600).coerceAtLeast(120)-60)*1000L
             credentials=fingerprint
         }
+    }
+    private fun cloud(s: Settings): Snapshot {
+        authenticate(s)
         val j=post(s.baseUrl+"/v1.0/device/latest",
             JSONObject().put("deviceList",JSONArray().put(s.inverterSn.trim())).put("deviceType","INVERTER"),token)
         val catalogKey=s.baseUrl+"|"+s.appId+"|"+s.email+"|"+s.inverterSn
@@ -73,7 +77,32 @@ class DeyeApi {
                 j.getLong("timestamp")*1000L,"Локальний API")
         }
     }
+    fun setGridCharge(s: Settings,enabled: Boolean): String {
+        require(s.source=="CLOUD") {"Перемикач доступний через Deye Cloud"}
+        authenticate(s)
+        val response=post(s.baseUrl+"/v1.0/order/battery/modeControl",gridChargeBody(s.inverterSn,enabled),token)
+        val id=response.opt("orderId")?.toString()?.takeIf {it.matches(Regex("[0-9]+"))}
+            ?: error("Deye не надав номер команди. Виконання не підтверджене.")
+        return id
+    }
+    fun gridChargeOrder(s: Settings,id: String): JSONObject {
+        require(id.matches(Regex("[0-9]+"))) {"Некоректний номер команди"}
+        authenticate(s)
+        val req=Request.Builder().url(s.baseUrl+"/v1.0/order/"+id).header("Authorization","Bearer $token").build()
+        client.newCall(req).execute().use {r->
+            check(r.isSuccessful) {"Deye: не вдалося перевірити команду (HTTP ${r.code})"}
+            val j=JSONObject(r.body?.string() ?: "{}")
+            check(j.optBoolean("success",false)) {"Deye не підтвердив стан команди: "+j.optString("code")}
+            check(j.opt("orderId")?.toString()==id) {"Deye повернув інший номер команди"}
+            return j
+        }
+    }
     companion object {
+        fun gridChargeBody(sn: String,enabled: Boolean): JSONObject {
+            require(sn.isNotBlank()) {"Вкажи SN інвертора"}
+            return JSONObject().put("deviceSn",sn.trim()).put("batteryModeType","GRID_CHARGE").put("action",if(enabled) "on" else "off")
+        }
+        fun orderSucceeded(j: JSONObject): Boolean = j.optInt("status",-1)==666
         fun parseCloud(j: JSONObject,s: Settings): Reading {
             val snapshot=parseSnapshot(j,s)
             require(snapshot.online) { "Логер офлайн. Стан мережі невідомий." }

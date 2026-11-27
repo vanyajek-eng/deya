@@ -144,7 +144,10 @@ private fun PulseApp(permission: ()->Unit) {
                             "Підключено. Доступно ${snapshot.points.size} параметрів. Моніторинг працює."
                         }
                     },
-                    save={action {withContext(Dispatchers.IO) {settings.validate();Store.save(c,settings)};"Налаштування збережено"}},
+                    save={action {withContext(Dispatchers.IO) {settings.validate();Store.save(c,settings)}
+                        TelegramOutbox.kick(c,resetError=true)
+                        if(!state.running) MonitorService.start(c)
+                        "Налаштування збережено. Автоматичні сигнали увімкнено"}},
                     pin=pin,permission=permission,
                     testAlert={
                         Notifier.notify(c,Alarm("test","Deye Pulse • тест","Сповіщення на телефоні працюють."))
@@ -152,7 +155,13 @@ private fun PulseApp(permission: ()->Unit) {
                             "Тест надіслано у шторку сповіщень" else "Дозволь сповіщення Android"
                     },
                     testTelegram={action {
-                        withContext(Dispatchers.IO) {Notifier.telegram(settings,Alarm("test","Deye Pulse підключено","Тест доставки повідомлень."))}
+                        withContext(Dispatchers.IO) {
+                            Store.save(c,settings)
+                            Notifier.telegram(settings,Alarm("test","Deye Pulse підключено","Тест доставки повідомлень. Доступи збережені для автоматичних сигналів."))
+                            TelegramOutbox.state(c,"Тест доставлено • "+timeLabel(System.currentTimeMillis()))
+                        }
+                        TelegramOutbox.kick(c,resetError=true)
+                        if(!state.running && runCatching {settings.validate()}.isSuccess) MonitorService.start(c)
                         "Telegram прийняв повідомлення"
                     }})
             }

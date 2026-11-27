@@ -17,6 +17,7 @@ class MonitorService: Service() {
         }
         Store.init(this);Notifier.channels(this)
         startForeground(1,Notifier.ongoing(this,"Підключення до Deye…"));Store.enabled(this,true)
+        TelegramOutbox.kick(this)
         if(job?.isActive!=true) {
             wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"DeyePulse:monitor")
                 .apply {setReferenceCounted(false);acquire(600000L)}
@@ -26,10 +27,7 @@ class MonitorService: Service() {
     }
     private fun deliver(a: Alarm,s: Settings?) {
         Notifier.notify(this,a)
-        if(s!=null && s.telegramToken.isNotBlank() && s.telegramChat.isNotBlank()) scope.launch {
-            try {Notifier.telegram(s,a)}
-            catch(e: Exception) {Store.log(this@MonitorService,"Помилка Telegram",e.message ?: "Не доставлено")}
-        }
+        if(s!=null) TelegramOutbox.enqueue(this,s,a)
     }
     private suspend fun loop() {
         var engine=AlarmEngine(Store.alarmState(this))

@@ -65,6 +65,7 @@ fun Dashboard(state: ScreenState,s: Settings,now: Long,onParameters: ()->Unit,on
                 }
             }
         }
+        ChargingCard(s)
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             PowerTile("Споживання",powerLabel(m?.loadWatts),Icons.Rounded.Home,Gold,Modifier.weight(1f))
             PowerTile("Сонце",powerLabel(m?.pvWatts),Icons.Rounded.WbSunny,Mint,Modifier.weight(1f))

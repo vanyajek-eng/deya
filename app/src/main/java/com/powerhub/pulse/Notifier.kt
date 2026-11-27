@@ -40,12 +40,6 @@ object Notifier {
     }
     fun telegram(s: Settings,a: Alarm) {
         require(s.telegramToken.isNotBlank() && s.telegramChat.isNotBlank()) { "Вкажи bot token та chat ID" }
-        val body=FormBody.Builder().add("chat_id",s.telegramChat.trim()).add("text",a.title+"\n"+a.detail).build()
-        val client=OkHttpClient.Builder().callTimeout(12,TimeUnit.SECONDS).build()
-        client.newCall(Request.Builder().url("https://api.telegram.org/bot"+s.telegramToken.trim()+"/sendMessage").post(body).build()).execute().use {
-            check(it.isSuccessful && JSONObject(it.body?.string() ?: "{}").optBoolean("ok")) {
-                "Telegram не прийняв повідомлення (HTTP ${it.code}). Перевір token, chat ID та /start у боті."
-            }
-        }
+        TelegramTransport.send(s.telegramToken,s.telegramChat,a.title+"\n"+a.detail)
     }
 }

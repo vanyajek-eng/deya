@@ -33,11 +33,12 @@ data class Settings(
     val cloudLoadUnit: String = "W", val gridIsVoltage: Boolean = true,
     val lowSoc: Int = 20, val highWatts: Int = 3000,
     val pollSeconds: Int = 15, val confirmSeconds: Int = 30, val maxAgeSeconds: Int = 900,
-    val telegramToken: String = "", val telegramChat: String = "", val boot: Boolean = true
+    val telegramToken: String = "", val telegramChat: String = "", val boot: Boolean = true, val fastCloudAlerts: Boolean = true, val companyId: String = ""
 ) {
     fun validate() {
         require(lowSoc in 1..99 && highWatts in 100..1000000) { "Перевір пороги сповіщень" }
         require(pollSeconds in 3..300 && confirmSeconds in 0..300 && maxAgeSeconds in 30..3600) { "Перевір інтервали" }
+        require(companyId.isBlank() || (companyId.trim().toLongOrNull() ?: 0)>0) {"Company ID має бути додатним числом"}
         if (source == "CLOUD") {
             require(listOf(appId,secret,email,password,inverterSn).all { it.isNotBlank() }) { "Заповни дані Deye Cloud та SN інвертора" }
             require(baseUrl in listOf("https://eu1-developer.deyecloud.com","https://us1-developer.deyecloud.com","https://india-developer.deyecloud.com")) { "Обери сервер Deye Cloud" }
@@ -54,7 +55,7 @@ data class Settings(
         put("cloudLoadUnit",cloudLoadUnit); put("gridIsVoltage",gridIsVoltage)
         put("lowSoc",lowSoc); put("highWatts",highWatts); put("pollSeconds",pollSeconds)
         put("confirmSeconds",confirmSeconds); put("maxAgeSeconds",maxAgeSeconds)
-        put("telegramToken",telegramToken); put("telegramChat",telegramChat); put("boot",boot)
+        put("telegramToken",telegramToken); put("telegramChat",telegramChat); put("boot",boot); put("fastCloudAlerts",fastCloudAlerts); put("companyId",companyId)
     }
     companion object {
         fun parse(j: JSONObject) = Settings(
@@ -67,7 +68,7 @@ data class Settings(
             gridIsVoltage=j.optBoolean("gridIsVoltage",true),lowSoc=j.optInt("lowSoc",20),
             highWatts=j.optInt("highWatts",3000),pollSeconds=j.optInt("pollSeconds",15),
             confirmSeconds=j.optInt("confirmSeconds",30),maxAgeSeconds=j.optInt("maxAgeSeconds",900),
-            telegramToken=j.optString("telegramToken"),telegramChat=j.optString("telegramChat"),boot=j.optBoolean("boot",true)
+            telegramToken=j.optString("telegramToken"),telegramChat=j.optString("telegramChat"),boot=j.optBoolean("boot",true),fastCloudAlerts=j.optBoolean("fastCloudAlerts",true),companyId=j.optString("companyId")
         )
     }
 }
@@ -86,7 +87,8 @@ class AlarmEngine(saved: JSONObject = JSONObject()) {
     fun acceptSnapshot(snapshot: Snapshot,s: Settings,now: Long): List<Alarm> {
         if(!snapshot.fresh(System.currentTimeMillis(),s.maxAgeSeconds)) { gap();return emptyList() }
         val m=snapshot.metrics()
-        return evaluate(m.soc,m.loadWatts,m.grid,snapshot.measuredAt,s,now)
+        val rules=if(s.source=="CLOUD" && s.fastCloudAlerts) s.copy(confirmSeconds=0) else s
+        return evaluate(m.soc,m.loadWatts,m.grid,snapshot.measuredAt,rules,now)
     }
     private fun evaluate(soc: Float?,watts: Float?,grid: Boolean?,at: Long,s: Settings,now: Long): List<Alarm> {
         val events=mutableListOf<Alarm>()

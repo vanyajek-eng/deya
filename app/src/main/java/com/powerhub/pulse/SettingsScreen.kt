@@ -84,15 +84,18 @@ import androidx.compose.ui.unit.sp
             }
             Text("Під час моніторингу оновлюється разом із API. Без постійного моніторингу Android виконує періодичні перевірки приблизно раз на 15 хв або пізніше. Кнопка ↻ запитує оновлення без входу в додаток.",color=Subtle,fontSize=11.sp,lineHeight=16.sp)
         }
+        ChargingCard(s)
         PulseCard {
             Text("Сигнали",fontSize=20.sp,fontWeight=FontWeight.SemiBold)
             NumberInput("Низький заряд (%)",s.lowSoc) {onSettings(s.copy(lowSoc=it))}
             NumberInput("Навантаження без мережі (Вт)",s.highWatts) {onSettings(s.copy(highWatts=it))}
-            NumberInput("Підтвердження стану мережі (с)",s.confirmSeconds) {onSettings(s.copy(confirmSeconds=it))}
+            Toggle("Швидкі сигнали Deye Cloud",s.fastCloudAlerts) {onSettings(s.copy(fastCloudAlerts=it))}
+            Text("У швидкому режимі повідомляємо за першим свіжим виміром, без очікування наступного завантаження логера. Хмарна затримка залишається.",fontSize=11.sp,color=Gold)
+            NumberInput("Підтвердження мережі без швидкого режиму (с)",s.confirmSeconds) {onSettings(s.copy(confirmSeconds=it))}
             NumberInput("Опитування API кожні (с)",s.pollSeconds) {onSettings(s.copy(pollSeconds=it))}
             NumberInput("Максимальний вік для сигналів (с)",s.maxAgeSeconds) {onSettings(s.copy(maxAgeSeconds=it))}
             Toggle("Відновлювати моніторинг після перезавантаження",s.boot) {onSettings(s.copy(boot=it))}
-            Text("Для підтвердження зміни мережі потрібні різні виміри. Швидкість сигналу обмежена оновленням логера та хмари.",fontSize=11.sp,color=Gold,lineHeight=17.sp)
+            Text("Підтвердження між різними вимірами використовується, якщо швидкий режим вимкнений. Швидкість сигналу обмежена оновленням логера та хмари.",fontSize=11.sp,color=Gold,lineHeight=17.sp)
             OutlinedButton(onClick=permission,modifier=Modifier.fillMaxWidth()) {Text("Дозвіл і звук сповіщень")}
             OutlinedButton(onClick=testAlert,modifier=Modifier.fillMaxWidth()) {Text("Тест сигналу на телефоні")}
             OutlinedButton(onClick={c.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))},modifier=Modifier.fillMaxWidth()) {
@@ -103,7 +106,11 @@ import androidx.compose.ui.unit.sp
             Text("Telegram",fontSize=20.sp,fontWeight=FontWeight.SemiBold)
             Input("Bot token",s.telegramToken,true) {onSettings(s.copy(telegramToken=it))}
             Input("Chat ID",s.telegramChat) {onSettings(s.copy(telegramChat=it))}
-            Text("Спочатку надішли /start своєму боту.",fontSize=11.sp,color=Subtle)
+            Text("Спочатку надішли /start своєму боту. Перевірка також зберігає введені доступи.",fontSize=11.sp,color=Subtle)
+            var delivery by remember {mutableStateOf(TelegramOutbox.state(c))}
+            LaunchedEffect(Unit) {while(true) {delivery=TelegramOutbox.state(c);kotlinx.coroutines.delay(1000)}}
+            Text(delivery,fontSize=11.sp,color=Gold)
+            OutlinedButton(onClick={TelegramOutbox.kick(c,resetError=true)},modifier=Modifier.fillMaxWidth()) {Text("Повторити недоставлені повідомлення")}
             OutlinedButton(onClick=testTelegram,enabled=!working,modifier=Modifier.fillMaxWidth()) {Text("Перевірити Telegram")}
         }
         PulseCard {
@@ -117,6 +124,7 @@ import androidx.compose.ui.unit.sp
                     FilterChip(selected=s.source=="JSON",onClick={onSettings(s.copy(source="JSON"))},label={Text("Локальний JSON")})
                 }
                 Text("Усі параметри показуються автоматично. Ці поля лише уточнюють показники огляду та сигналів.",fontSize=11.sp,color=Subtle,lineHeight=16.sp)
+                Input("Company ID (якщо вимагає бізнес-акаунт)",s.companyId) {onSettings(s.copy(companyId=it))}
                 Input("Ключ заряду АКБ",s.socKey) {onSettings(s.copy(socKey=it))}
                 Input("Ключ напруги АКБ",s.voltageKey) {onSettings(s.copy(voltageKey=it))}
                 Input("Ключ навантаження",s.loadKey) {onSettings(s.copy(loadKey=it))}
