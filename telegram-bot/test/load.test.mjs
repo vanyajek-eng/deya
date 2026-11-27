@@ -62,3 +62,13 @@ test('load is rechecked before OFF to reject a transient cloud peak',async()=>{
   const h=fixture();let reads=0;h.client.relayPower=async()=>({watts:++reads===1?3800:3000,measuredAt:T});
   await h.tick();assert.deepEqual(h.calls,[]);
 });
+test('new overload is evaluated after five seconds',async()=>{
+  const h=fixture();h.set({watts:1000});await h.tick();
+  h.set({watts:3800});await h.tick(4999);assert.deepEqual(h.calls,[]);
+  await h.tick(1);assert.deepEqual(h.calls,['off']);
+});
+test('unconfirmed OFF retries after five seconds, not a minute',async()=>{
+  const h=fixture();h.client.off=async()=>h.calls.push('off');
+  await h.tick();assert.equal(h.bot.record.boiler.mode,'unconfirmed');
+  await h.tick(5000);assert.deepEqual(h.calls,['off','off']);
+});

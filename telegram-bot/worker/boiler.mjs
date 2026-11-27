@@ -5,7 +5,7 @@ import { BlobPreconditionFailedError } from './store.mjs';
 
 export const BOILER_POLL_MS=120000;
 export const GRID_RETURN_MS=120000;
-export const LOAD_POLL_MS=15000;
+export const LOAD_POLL_MS=5000;
 export const LOAD_OFF_W=3700;
 export const LOAD_ON_W=1500;
 export function boilerText(record) {
@@ -13,7 +13,7 @@ export function boilerText(record) {
   return '⚡ Автоматика бойлера\n\n'+(record.boilerPaused ? 'Перевірки призупинені власником.' : s?.message || 'Очікування перевірки Tuya.')+
     (s?.checkedAt ? '\nОстання перевірка: '+clock(s.checkedAt) : '')+
     (Number.isFinite(s?.watts) ? '\nОстанній вимір Breaker: '+(s.watts/1000).toFixed(2)+' кВт ('+clock(s.powerAt)+')' : '')+
-    '\n\nПонад 3,7 кВт або Breaker офлайн — вимкнути Smart Plug +. Повернення: мережа онлайн і навантаження нижче 1,5 кВт протягом 2 хвилин. Перевірка кожні 15 с; є затримка хмари Tuya. Вмикається лише бойлер, який вимкнула автоматика.'+
+    '\n\nПонад 3,7 кВт або Breaker офлайн — вимкнути Smart Plug +. Повернення: мережа онлайн і навантаження нижче 1,5 кВт протягом 2 хвилин. Перевірка кожні 5 с; є затримка хмари Tuya. Вмикається лише бойлер, який вимкнула автоматика.'+
     '\n/boiler_pause — призупинити\n/boiler_resume — відновити';
 }
 export class BoilerGuard {
@@ -77,7 +77,7 @@ export class BoilerGuard {
       const overloaded=watts!==null && watts>LOAD_OFF_W;
       if(!relay.online || overloaded || watts===null || watts>=LOAD_ON_W) s.lowSince=null;
       if(relay.online && !overloaded) {
-        if(!before.checkedAt) this.notify(bot,'⚡ Автоматика бойлера активна','Понад 3,7 кВт або Breaker офлайн — вимкнути. Повернення нижче 1,5 кВт протягом 2 хв онлайн-мережі. Перевірки кожні 15 с.');
+        if(!before.checkedAt) this.notify(bot,'⚡ Автоматика бойлера активна','Понад 3,7 кВт або Breaker офлайн — вимкнути. Повернення нижче 1,5 кВт протягом 2 хв онлайн-мережі. Перевірки кожні 5 с.');
         if(this.client.c.loadControl && watts===null) {
           s.onlineSince=null;s.mode='power_unknown';
           s.message='⚠️ Немає свіжої потужності Breaker: '+s.powerError+'. Автоматичне ввімкнення заблоковано.';
@@ -129,7 +129,7 @@ export class BoilerGuard {
           s.lowSince=null;
           this.notify(bot,'✅ Бойлер автоматично ввімкнено',s.message);
         } else {
-          s.mode='on_unconfirmed';s.message='Команду ввімкнення прийнято, але розетка ще не підтвердила стан.';this.next=this.now()+60000;
+          s.mode='on_unconfirmed';s.message='Команду ввімкнення прийнято, але розетка ще не підтвердила стан.';this.next=this.now()+(this.client.c.loadControl ? LOAD_POLL_MS : 60000);
           if(before.mode!=='on_unconfirmed') this.notify(bot,'⚠️ Бойлер: увімкнення ще не підтверджене',s.message);
         }
         await this.save(bot);return;
@@ -139,7 +139,7 @@ export class BoilerGuard {
       const on=await this.client.plugState();
       if(!on) {
         s.mode='off';s.confirmedAt=now;s.message=overloaded ? '⛔ Навантаження понад 3,7 кВт. Розетка вже вимкнена.' : '⛔ Breaker офлайн. Розетка вже вимкнена.';
-        if(!before.checkedAt) this.notify(bot,'⚡ Автоматика бойлера активна','Понад 3,7 кВт або Breaker офлайн — вимкнути. Повернення нижче 1,5 кВт протягом 2 хв онлайн-мережі. Перевірки кожні 15 с.');
+        if(!before.checkedAt) this.notify(bot,'⚡ Автоматика бойлера активна','Понад 3,7 кВт або Breaker офлайн — вимкнути. Повернення нижче 1,5 кВт протягом 2 хв онлайн-мережі. Перевірки кожні 5 с.');
         await this.save(bot);return;
       }
       relay=await this.grid();
@@ -159,7 +159,7 @@ export class BoilerGuard {
       await this.save(bot,true);
       await this.client.off();
       if(await this.client.plugState()) {
-        s.mode='unconfirmed';s.message='Команду вимкнення прийнято, але розетка ще не підтвердила стан. Перевіримо повторно.';this.next=this.now()+60000;
+        s.mode='unconfirmed';s.message='Команду вимкнення прийнято, але розетка ще не підтвердила стан. Перевіримо повторно.';this.next=this.now()+(this.client.c.loadControl ? LOAD_POLL_MS : 60000);
         if(before.mode!=='unconfirmed') this.notify(bot,'⚠️ Бойлер: вимкнення ще не підтверджене',s.message);
       } else {
         s.mode='off';s.confirmedAt=this.now();

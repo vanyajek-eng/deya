@@ -35,6 +35,19 @@ const input=(async()=>{
     } catch(e) {console.error('Telegram polling unavailable',e.code || 'NETWORK');await sleep(Math.max(5,e.retryAfter || 0)*1000);}
   }
 })();
+// Tuya checks must not wait for Deye requests or Telegram deliveries.
+// CloudStore serializes writes from both loops using the current ETag.
+let boilerFailure;
+const boilerLoop=(async()=>{
+  while(!stop.signal.aborted) {
+    try {if(boiler) await boiler.tick(bot);}
+    catch(e) {
+      if(e instanceof BlobPreconditionFailedError) {boilerFailure=e;stop.abort();return;}
+      console.error('Boiler temporarily unavailable',e.code || 'NETWORK');
+    }
+    await sleep(1000);
+  }
+})();
 console.log('Deye Telegram worker started');
 try {
   while(!stop.signal.aborted) {
@@ -46,7 +59,7 @@ try {
         console.error('Command failed',e.code || 'NETWORK');
       } finally {entry.resolve();}
     }
-    try {await bot.tick();if(boiler) await boiler.tick(bot);} catch(e) {
+    try {await bot.tick();} catch(e) {
       if(e instanceof BlobPreconditionFailedError) throw e;
       console.error('Monitor temporarily unavailable',e.code || 'NETWORK');
     }
@@ -54,7 +67,9 @@ try {
   }
 } finally {
   stop.abort();for(const entry of inbox) entry.resolve();
-  await store.save(bot.record).catch(()=>{});server.close();
+  await boilerLoop;
+  if(!boilerFailure) await store.save(bot.record).catch(()=>{});server.close();
 }
 // Pending bounded long-poll is safe to abandon on shutdown.
+if(boilerFailure) throw boilerFailure;
 void input;process.exit(0);
