@@ -1,6 +1,8 @@
 package com.powerhub.pulse
 
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -45,7 +47,7 @@ class DeliveryAndChargeTest {
                 else -> error("Unexpected request; test never calls a real server")
             }
             Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
-                .body(ResponseBody.create(MediaType.parse("application/json"),body)).build()
+                .body(body.toResponseBody("application/json".toMediaType())).build()
         }.build()
         val api=DeyeApi(client)
         val id=api.setGridCharge(settings,false)
