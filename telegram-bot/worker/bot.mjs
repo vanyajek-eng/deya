@@ -15,6 +15,7 @@ export class Bot {
   async tick() {
     const now=this.now();
     if(now>=this.nextDeye) {
+      this.record.monitorAt=now;
       this.nextDeye=now+this.pollSeconds*1000;
       const before=JSON.stringify(this.record.alarm);
       let snapshot;
