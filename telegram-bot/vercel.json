@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm test",
+  "outputDirectory": "public",
+  "functions": { "api/admin.mjs": { "maxDuration": 60 } },
+  "daemons": {
+    "deye-bot": {
+      "root": "worker",
+      "entrypoint": "Dockerfile",
+      "instances": { "fra1": 0 },
+      "resources": { "requests": { "memory": "1Gi" } },
+      "terminationGracePeriodSeconds": 30,
+      "livenessProbe": { "httpGet": { "port": 1234, "path": "/health" }, "initialDelaySeconds": 90, "periodSeconds": 30 }
+    }
+  }
+}

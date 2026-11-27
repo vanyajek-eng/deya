@@ -1,0 +1,27 @@
+name: Telegram bot checks
+on:
+  push:
+    paths:
+      - 'telegram-bot/**'
+      - '.github/workflows/telegram-bot.yml'
+  pull_request:
+    paths:
+      - 'telegram-bot/**'
+      - '.github/workflows/telegram-bot.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: telegram-bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: telegram-bot/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: node --check worker/main.mjs
+      - run: node --check api/admin.mjs
