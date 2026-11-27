@@ -62,10 +62,13 @@ export class TuyaClient {
     if(typeof value!=='boolean') throw new TuyaError('UNKNOWN_PLUG_STATE');
     return value;
   }
-  async off() {
+  async switchPower(value) {
+    if(typeof value!=='boolean') throw new TuyaError('INVALID_SWITCH_VALUE');
     await this.validatePlug();
     const result=await this.request('POST','/v1.0/iot-03/devices/'+this.c.plugId+'/commands',
-      {commands:[{code:this.c.code,value:false}]});
+      {commands:[{code:this.c.code,value}]});
     if(result!==true) throw new TuyaError('COMMAND_NOT_ACCEPTED');
   }
+  async off() {return this.switchPower(false);}
+  async on() {return this.switchPower(true);}
 }

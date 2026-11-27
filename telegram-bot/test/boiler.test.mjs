@@ -8,9 +8,9 @@ import { initial } from '../worker/store.mjs';
 const NOW=1800000000000;
 const CONFIG={clientId:'client',secret:'secret',base:'https://openapi.tuyaeu.com',relayId:'relay000000',plugId:'plug0000000',code:'switch_1'};
 function fixture({relay=true,plugOnline=true,on=true,confirmed=true}={}) {
-  let now=NOW,reads=0;const calls=[];
+  let now=NOW,power=on;const calls=[];
   const client={c:CONFIG,async details(id){calls.push(['details',id]);return id===CONFIG.relayId ? {id,online:relay,category:'dlq'} : {id,online:plugOnline,category:'cz'};},
-    async validatePlug(){calls.push(['validate']);},async plugState(){calls.push(['state']);return reads++===0 ? on : !confirmed;},async off(){calls.push(['off',CONFIG.plugId]);}};
+    async validatePlug(){calls.push(['validate']);},async plugState(){calls.push(['state']);return power;},async off(){calls.push(['off',CONFIG.plugId]);if(confirmed) power=false;},async on(){calls.push(['on',CONFIG.plugId]);if(confirmed) power=true;}};
   const bot={chat:'owner',record:{queue:[],boilerEvents:[],viewers:{other:{alerts:true}}},writes:[],async persist(){this.writes.push(structuredClone(this.record));}};
   const guard=new BoilerGuard(client,()=>now);
   return {client,bot,guard,calls,advance(ms){now+=ms;}};
@@ -65,16 +65,23 @@ test('accepted command without off readback is explicitly unconfirmed',async()=>
   const h=fixture({relay:false,confirmed:false});await h.guard.tick(h.bot);
   assert.equal(h.bot.record.boiler.mode,'unconfirmed');assert.equal(h.bot.record.boiler.confirmedAt,undefined);
 });
-test('polling runs every five minutes and pauses persist across restarts',async()=>{
+test('polling runs every two minutes and pauses persist across restarts',async()=>{
   const h=fixture();await h.guard.tick(h.bot);const count=h.calls.length;
-  h.advance(299999);await h.guard.tick(h.bot);assert.equal(h.calls.length,count);
+  h.advance(119999);await h.guard.tick(h.bot);assert.equal(h.calls.length,count);
   h.advance(1);await h.guard.tick(h.bot);assert.equal(h.calls.length,count+1);
-  h.bot.record.boilerPaused=true;h.advance(300000);await h.guard.tick(h.bot);assert.equal(h.calls.length,count+1);
+  h.bot.record.boilerPaused=true;h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.length,count+1);
 });
-test('restoring grid online never turns the boiler on',async()=>{
-  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(300000);
+test('grid recovery restores power only after two minutes and confirms ON',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
   h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
-  await h.guard.tick(h.bot);assert.equal(h.calls.filter(c=>c[0]==='off').length,1);assert.equal(h.bot.record.boiler.mode,'grid_online');
+  await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.mode,'waiting_grid');
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(119999);await h.guard.tick(h.bot);assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(1);await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.mode,'on');
+  assert.equal(h.bot.record.boiler.restoreNeeded,false);
+  assert.equal(h.calls.filter(c=>c[0]==='on').length,1);
+  assert.deepEqual(h.bot.record.queue.at(-1).recipients,['owner']);
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.filter(c=>c[0]==='on').length,1);
 });
 test('low-level command uses false only for the configured plug and cached token',async()=>{
   const calls=[];
@@ -102,4 +109,81 @@ test('public Telegram users cannot pause or resume boiler automation',async()=>{
   assert.equal(bot.record.boilerPaused,undefined);assert.equal(calls.length,0);
   await bot.handle({update_id:2,message:{text:'/boiler_pause',from:{id:123,is_bot:false},chat:{id:123,type:'private'}}});
   assert.equal(bot.record.boilerPaused,true);assert.equal(calls.length,1);
+});
+
+test('first online observation does not start a manually off boiler',async()=>{
+  const h=fixture({relay:true,on:false});await h.guard.tick(h.bot);h.advance(120000);await h.guard.tick(h.bot);
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);
+});
+test('plug already off before an outage is left off after grid returns',async()=>{
+  const h=fixture({relay:false,on:false});await h.guard.tick(h.bot);h.advance(120000);
+  h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);h.advance(120000);await h.guard.tick(h.bot);
+  assert.equal(h.bot.record.boiler.restoreNeeded,false);assert.equal(h.calls.some(c=>c[0]==='on'),false);
+});
+test('grid flapping resets the full recovery timer',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  let online=true;h.client.details=async(id)=>({id,online:id===CONFIG.relayId?online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);
+  online=false;h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.onlineSince,null);
+  online=true;h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.filter(c=>c[0]==='on').length,1);
+});
+test('API failure during recovery clears the timer and never enables power',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  const details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  h.client.details=details;await h.guard.tick(h.bot);
+  h.client.details=async()=>{throw new TuyaError('NETWORK');};
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.onlineSince,null);
+  h.client.details=details;h.advance(60000);await h.guard.tick(h.bot);
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.filter(c=>c[0]==='on').length,1);
+});
+test('pause during recovery discards the accumulated online time',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);h.bot.record.boilerPaused=true;
+  h.advance(60000);await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.onlineSince,null);
+  h.bot.record.boilerPaused=false;h.advance(60000);await h.guard.tick(h.bot);
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.calls.filter(c=>c[0]==='on').length,1);
+});
+test('a long gap in observations cannot count as stable online time',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);h.advance(240000);await h.guard.tick(h.bot);
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);assert.equal(h.bot.record.boiler.mode,'waiting_grid');
+});
+test('last-second grid loss cancels the ON command',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);h.advance(120000);
+  let reads=0;h.client.details=async(id)=>({id,online:id===CONFIG.relayId?++reads===1:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  assert.equal(h.bot.record.boiler.onlineSince,null);
+});
+test('ON without positive readback remains unconfirmed',async()=>{
+  const h=fixture({relay:false});await h.guard.tick(h.bot);h.advance(120000);
+  h.client.details=async(id)=>({id,online:true,category:id===CONFIG.relayId?'dlq':'cz'});
+  await h.guard.tick(h.bot);h.advance(120000);
+  h.client.on=async()=>{h.calls.push(['on',CONFIG.plugId]);};
+  await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.mode,'on_unconfirmed');
+  assert.equal(h.bot.record.boiler.onConfirmedAt,undefined);assert.equal(h.bot.record.boiler.restoreNeeded,true);
+});
+test('on method sends true only to the verified boiler switch',async()=>{
+  const calls=[];const client=new TuyaClient(CONFIG,async(url,options)=>{
+    calls.push({url,options});const result=url.includes('/token?')?{access_token:'a'}:url.endsWith('/functions')?{category:'cz',functions:[{code:'switch_1',type:'Boolean'}]}:true;
+    return new Response(JSON.stringify({success:true,result}));
+  });
+  await client.on();const command=calls.find(c=>c.options.method==='POST');
+  assert.equal(command.url,CONFIG.base+'/v1.0/iot-03/devices/'+CONFIG.plugId+'/commands');
+  assert.deepEqual(JSON.parse(command.options.body),{commands:[{code:'switch_1',value:true}]});
+});
+test('outstanding shutdown from the off-only version resumes through the full timer',async()=>{
+  const h=fixture({relay:true,on:false});
+  h.bot.record.boiler={mode:'off',relayOnline:false,commandAt:NOW-120000,confirmedAt:NOW-119000,checkedAt:NOW-120000};
+  await h.guard.tick(h.bot);
+  assert.equal(h.bot.record.boiler.restoreNeeded,true);assert.equal(h.bot.record.boiler.mode,'waiting_grid');
+  assert.equal(h.calls.some(c=>c[0]==='on'),false);
+  h.advance(120000);await h.guard.tick(h.bot);assert.equal(h.bot.record.boiler.mode,'on');
 });
