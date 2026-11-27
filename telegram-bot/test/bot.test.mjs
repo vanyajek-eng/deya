@@ -94,9 +94,11 @@ test('Deye uses hashed password and read-only endpoints with isolated requests',
   assert.equal(calls.filter(c=>c.url.includes('/account/token')).length,1);
   assert.ok(calls.every(c=>!c.url.includes('/order/')));
 });
-test('unauthorized updates cause no Telegram replies or configuration changes',async()=>{
+test('public viewer cannot change global configuration',async()=>{
   const h=harness();await h.bot.handle(update(1,'alerts:toggle',999));
-  assert.equal(h.calls.length,0);assert.equal(h.bot.record.settings.alerts,true);
+  assert.equal(h.bot.record.settings.alerts,true);
+  assert.ok(h.calls.some(c=>c.method==='sendMessage' && c.body.chat_id==='999'));
+  assert.ok(!h.calls.find(c=>c.method==='sendMessage').body.reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='soc:up'));
 });
 test('duplicate callback does not apply threshold changes twice',async()=>{
   const h=harness();h.bot.record.messageId=42;
@@ -108,8 +110,7 @@ test('failed Telegram delivery keeps durable alarm, retry then removes it',async
   h.bot.telegram.call=async(method,body)=>{h.calls.push({method,body});if(failing) throw new ApiError('Offline',503);return {};};
   await h.bot.tick();assert.equal(h.bot.record.queue.length,2);
   assert.equal(h.store.value.queue.length,2);
-  failing=false;h.advance(30000);await h.bot.deliver();assert.equal(h.bot.record.queue.length,1);
-  await h.bot.deliver();assert.equal(h.bot.record.queue.length,0);
+  failing=false;h.advance(30000);await h.bot.deliver();assert.equal(h.bot.record.queue.length,0);
 });
 test('repeated same timestamp does not append history or spam writes',async()=>{
   const h=harness();await h.bot.tick();const writes=h.store.writes.length;
@@ -139,4 +140,65 @@ test('cloud storage rereads content if HEAD and GET describe different versions'
     async head(){return {etag:'"two"'};},async put(){throw new Error('not used');}
   });
   await s.load();assert.equal(reads,2);assert.equal(s.etag,'"two"');
+});
+
+test('any private user can start and gets an independent dashboard',async()=>{
+  const h=harness();
+  await h.bot.handle({update_id:1,message:{text:'/start',from:{id:999,is_bot:false},chat:{id:999,type:'private'}}});
+  assert.equal(h.bot.record.viewers['999'].messageId,42);
+  assert.equal(h.bot.record.messageId,null);
+  assert.equal(h.calls.find(c=>c.method==='sendMessage').body.chat_id,'999');
+});
+test('a forged sender or group cannot subscribe or view telemetry',async()=>{
+  const h=harness();const u=update(1,'home',999);u.callback_query.from.id=123;
+  await h.bot.handle(u);assert.equal(h.calls.length,0);assert.equal(Object.keys(h.bot.record.viewers).length,0);
+  const g=update(2,'home',999);g.callback_query.message.chat.type='group';
+  await h.bot.handle(g);assert.equal(h.calls.length,0);
+});
+test('parameter browsing for one viewer does not change the owner panel',async()=>{
+  const h=harness();h.bot.record.messageId=15;
+  await h.bot.handle(update(1,'all:0',999));
+  assert.equal(h.bot.record.view,'home');assert.equal(h.bot.record.messageId,15);
+  assert.equal(h.bot.record.viewers['999'].view,'all:0');
+  const send=h.calls.find(c=>c.method==='sendMessage');assert.equal(send.body.chat_id,'999');
+});
+test('public viewers cannot forge owner threshold buttons',async()=>{
+  const h=harness();h.bot.record.messageId=42;
+  await h.bot.handle(update(1,'soc:up',999));
+  assert.equal(h.bot.record.settings.lowSoc,20);
+  await h.bot.handle(update(2,'load:up',999));
+  assert.equal(h.bot.record.settings.highWatts,3000);
+});
+test('public notification toggle and stop affect only that subscriber',async()=>{
+  const h=harness();h.bot.record.messageId=42;
+  await h.bot.handle(update(1,'home',999));
+  await h.bot.handle(update(2,'myalerts:toggle',999));
+  assert.equal(h.bot.record.viewers['999'].alerts,false);assert.equal(h.bot.record.settings.alerts,true);
+  await h.bot.handle(update(3,'myalerts:toggle',999));
+  assert.equal(h.bot.record.viewers['999'].alerts,true);
+  await h.bot.handle({update_id:4,message:{text:'/stop',from:{id:999,is_bot:false},chat:{id:999,type:'private'}}});
+  assert.equal(h.bot.record.viewers['999'].alerts,false);assert.equal(h.bot.record.settings.alerts,true);
+});
+test('alarm fans out to active subscribers and owner without sending to unsubscribed users',async()=>{
+  const h=harness(sample(0,19,3200));
+  h.bot.record.viewers={'999':{alerts:true},'888':{alerts:false}};
+  await h.bot.tick();await h.bot.deliver();
+  const sends=h.calls.filter(c=>c.method==='sendMessage').map(c=>c.body.chat_id);
+  assert.ok(sends.includes('123'));assert.ok(sends.includes('999'));assert.ok(!sends.includes('888'));
+  assert.equal(h.bot.record.queue.length,0);
+});
+test('a blocked subscriber does not block delivery to the owner or another subscriber',async()=>{
+  const h=harness();h.bot.record.viewers={'999':{alerts:true},'888':{alerts:true}};
+  h.bot.record.queue=[{id:'a',title:'Alarm',detail:'test',at:NOW,measuredAt:NOW,recipients:['999','123','888']}];
+  h.bot.telegram.call=async(method,body)=>{h.calls.push({method,body});if(body.chat_id==='999') throw new ApiError('blocked',403);return {};};
+  await h.bot.deliver();
+  assert.equal(h.bot.record.viewers['999'].alerts,false);
+  assert.equal(h.bot.record.queue.length,0);
+  assert.ok(h.calls.some(c=>c.body.chat_id==='888'));
+});
+test('legacy queued alarms stay addressed to the owner only',async()=>{
+  const h=harness();h.bot.record.viewers={'999':{alerts:true}};
+  h.bot.record.queue=[{id:'a',title:'Old',detail:'test',at:NOW,measuredAt:NOW}];
+  await h.bot.deliver();
+  assert.deepEqual(h.calls.filter(c=>c.method==='sendMessage').map(c=>c.body.chat_id),['123']);
 });

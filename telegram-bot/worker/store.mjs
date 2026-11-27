@@ -1,6 +1,6 @@
 import { get, head, put, BlobPreconditionFailedError } from '@vercel/blob';
 import { defaults } from './core.mjs';
-export function initial() { return {version:1,settings:{...defaults},alarm:{},events:[],queue:[],history:[],cursor:0,messageId:null,view:'home',viewUntil:0}; }
+export function initial() { return {version:2,viewers:{},deliveryCooldowns:{},settings:{...defaults},alarm:{},events:[],queue:[],history:[],cursor:0,messageId:null,view:'home',viewUntil:0}; }
 export class CloudStore {
   constructor(path = 'deye/bot-state.json', api = {get,head,put}) {this.path=path;this.api=api;this.etag=null;this.value=initial();}
   async load() {

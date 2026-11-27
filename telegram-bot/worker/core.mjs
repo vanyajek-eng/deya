@@ -82,6 +82,13 @@ export function evolve(saved, snapshot, settings, now) {
   }
   return {state, events};
 }
+export function privateChatId(update) {
+  const message = update.callback_query?.message ?? update.message;
+  const user = update.callback_query?.from ?? update.message?.from;
+  const id = String(message?.chat?.id ?? '');
+  return message?.chat?.type === 'private' && /^[1-9]\d*$/.test(id) &&
+    String(user?.id) === id && !user?.is_bot ? id : null;
+}
 export function authorized(update, owner) {
   const message = update.callback_query?.message ?? update.message;
   const user = update.callback_query?.from ?? update.message?.from;
