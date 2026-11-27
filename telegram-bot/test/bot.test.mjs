@@ -202,3 +202,20 @@ test('legacy queued alarms stay addressed to the owner only',async()=>{
   await h.bot.deliver();
   assert.deepEqual(h.calls.filter(c=>c.method==='sendMessage').map(c=>c.body.chat_id),['123']);
 });
+test('schedule dashboard is independent of Deye freshness and distinguishes missing tomorrow',()=>{
+  const now=Date.parse('2026-11-28T10:00:00Z');
+  const record={...initial(),outageSchedule:{fresh:true,fetchedAt:now,data:{days:[{date:'2026-11-28',publishedAt:now,intervals:[]}]}}};
+  const page=render('schedule',null,record,now);
+  assert.match(page.text,/Сьогодні · 28.11.2026/);assert.match(page.text,/Відключень за опублікованим графіком немає/);
+  assert.match(page.text,/Завтра · 29.11.2026\nГрафік ще не отримано/);
+  assert.doesNotMatch(page.text,/логер офлайн/);
+  assert.ok(render('home',null,record,now).reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='schedule'));
+});
+test('owner and public viewer can open and refresh schedule in their own dashboard',async()=>{
+  const calls=[],store={value:initial(),async save(){}},schedule={reads:0,async tick(){this.reads++;},current(){return {fresh:false};}};
+  const bot=new Bot({store,chat:123,deye:{async read(){throw new Error('must not query Deye');}},telegram:{async call(method,body){calls.push({method,body});return {message_id:42};}},schedule,now:()=>NOW});
+  for(const [id,who,action] of [[1,123,'schedule'],[2,456,'schedule_refresh']])await bot.handle(update(id,action,who));
+  assert.equal(schedule.reads,2);assert.equal(bot.record.view,'schedule');assert.equal(bot.record.viewers['456'].view,'schedule');
+  assert.equal(calls.filter(c=>c.method==='sendMessage'&&c.body.text.includes('Графік відключень')).length,2);
+  assert.equal(bot.record.boilerPaused,undefined);
+});

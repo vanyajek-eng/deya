@@ -1,3 +1,4 @@
+import { schedulePanelText } from './schedule.mjs';
 const finite = value => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(String(value).replace(',', '.'))) ? Number(String(value).replace(',', '.')) : null;
 export const normal = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 export const escapeHtml = s => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -106,8 +107,12 @@ export function render(view, snapshot, record, now = Date.now()) {
   const nav = [[row('🔄 Оновити','refresh'),row('🏠 Дашборд','home')],
     [row('🔋 АКБ','battery:0'),row('💡 Мережа','grid:0'),row('☀️ Сонце','solar:0')],
     [row('📋 Усі параметри','all:0'),row('📊 Історія','history')],
-    [row('🔔 Події','events'),row('⚙️ Налаштування','settings')]];
-  if (view === 'settings') {
+    [row('🔔 Події','events'),row('⚙️ Налаштування','settings')],
+    [row('📅 Графік відключень','schedule')]];
+  if (view === 'schedule') {
+    text=escapeHtml(schedulePanelText(record.outageSchedule,now));
+    keyboard=[[row('🔄 Оновити графік','schedule_refresh'),row('🏠 Дашборд','home')]];
+  } else if (view === 'settings') {
     text = `<b>⚙️ Сповіщення Deye</b>\n\n${settings.alerts ? '🔔 Увімкнені' : '🔕 Призупинені'}\nНизький заряд: <b>${settings.lowSoc}%</b>\nВисоке навантаження без мережі: <b>${settings.highWatts} Вт</b>\nПідтвердження мережі: ${settings.confirmSeconds} с\n\nБот працює незалежно від додатка. Швидкість обмежена оновленням Deye Cloud.\nЗміна порогів тут стосується лише бота.`;
     keyboard = [[row(settings.alerts ? '🔕 Призупинити сигнали' : '🔔 Увімкнути сигнали','alerts:toggle')],
       [row('АКБ −5%','soc:down'),row('АКБ +5%','soc:up')],
@@ -133,6 +138,6 @@ export function render(view, snapshot, record, now = Date.now()) {
     text = `<b>⚡ DEYE · PULSE</b>\nТвоя домашня енергія\n\n<b>${grid}</b>\n\n<b>🔋 Акумулятор  ${fmt(m.soc,'%')}</b>\n${'▰'.repeat(filled)}${'▱'.repeat(10-filled)}\nНапруга: ${fmt(m.volts,'В',2)}\nПотужність АКБ: ${power(m.battery)}\n\n<b>🏠 Будинок  ${power(m.load)}</b>\n☀️ Сонце: ${power(m.pv)}\n💡 Мережа: ${fmt(m.gridVoltage,'В')} · ${power(m.gridPower)}\n\n${ok ? '🟢 Останній доступний вимір' : '🟠 Дані не підтверджують поточний стан'}\n${clock(snapshot?.at)}${age === null ? '' : ' · '+age+' с тому'}\n${record.fetchError ? '\n⚠️ '+escapeHtml(record.fetchError) : ''}\n${settings.alerts ? '🔔 Сигнали увімкнені' : '🔕 Сигнали призупинені'}\n\n<i>Оновлення залежить від логера й Deye Cloud. Потужність АКБ показана зі знаком API.</i>`;
     keyboard = nav;
   }
-  if (!ok && view !== 'home' && view !== 'settings') text += '\n\n⚠️ Дані застарілі або логер офлайн. Це не підтвердження відключення світла.';
+  if (!ok && view !== 'home' && view !== 'settings' && view !== 'schedule') text += '\n\n⚠️ Дані застарілі або логер офлайн. Це не підтвердження відключення світла.';
   return {text,parse_mode:'HTML',reply_markup:{inline_keyboard:keyboard},link_preview_options:{is_disabled:true}};
 }

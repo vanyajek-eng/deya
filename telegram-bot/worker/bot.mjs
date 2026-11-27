@@ -3,8 +3,8 @@ import { authorized, privateChatId, clock, defaults, escapeHtml, evolve, metrics
 import { ApiError } from './api.mjs';
 import { boilerText } from './boiler.mjs';
 export class Bot {
-  constructor({store,deye,telegram,chat,now=()=>Date.now(),pollSeconds=15}) {
-    Object.assign(this,{store,deye,telegram,chat,now});this.record=store.value;this.snapshot=this.record.snapshot ?? null;
+  constructor({store,deye,telegram,chat,now=()=>Date.now(),pollSeconds=15,schedule=null}) {
+    Object.assign(this,{store,deye,telegram,chat,now,schedule});this.record=store.value;this.snapshot=this.record.snapshot ?? null;
     this.record.viewers ??= {};this.record.deliveryCooldowns ??= {};
     this.nextDeye=0;this.nextRender=0;this.nextDelivery=0;this.lastSaved=0;this.pollSeconds=pollSeconds;
   }
@@ -93,7 +93,7 @@ export class Bot {
   }
   async show(view='home',{automatic=false,chat=this.chat}={}) {
     const panel=this.panel(chat),owner=String(chat)===String(this.chat);
-    const content=render(view,this.snapshot,owner ? this.record : {...this.record,settings:{...this.record.settings,alerts:this.record.settings.alerts && panel.alerts}},this.now());
+    const content=render(view,this.snapshot,{...this.record,outageSchedule:this.schedule?.current(this.now()),settings:{...this.record.settings,alerts:this.record.settings.alerts && (owner || panel.alerts)}},this.now());
     if(!owner) {
       // Public readers can control only their own notification subscription.
       if(view==='settings') {
@@ -133,7 +133,7 @@ export class Bot {
     if(cb) await this.telegram.call('answerCallbackQuery',{callback_query_id:cb.id,text:'Оновлюю…'}).catch(()=>{});
     else {
       const command=(update.message.text || '').trim().split(/\s/)[0].split('@')[0];
-      action=({'/start':'home','/dashboard':'home','/status':'home','/battery':'battery:0','/grid':'grid:0','/solar':'solar:0','/parameters':'all:0','/events':'events','/settings':'settings','/help':'help','/stop':'stop','/boiler':'boiler','/boiler_pause':'boiler_pause','/boiler_resume':'boiler_resume'})[command];
+      action=({'/start':'home','/dashboard':'home','/status':'home','/battery':'battery:0','/grid':'grid:0','/solar':'solar:0','/parameters':'all:0','/events':'events','/settings':'settings','/schedule':'schedule','/help':'help','/stop':'stop','/boiler':'boiler','/boiler_pause':'boiler_pause','/boiler_resume':'boiler_resume'})[command];
     }
     if(!action) {this.record.cursor=update.update_id;await this.persist();return;}
     if(['boiler','boiler_pause','boiler_resume'].includes(action)) {
@@ -179,11 +179,12 @@ export class Bot {
       }
     }
     if(action==='help') {
-      await this.telegram.call('sendMessage',{chat_id:chat,text:'⚡ Deye Pulse у Telegram\n\n/dashboard — дашборд\n/parameters — усі параметри\n/events — події\n/settings — пороги та сповіщення\n\nПанель оновлюється одним повідомленням. Кнопка «Оновити» запитує останній доступний вимір хмари; вона не прискорює завантаження логера. Застарілі дані позначаються окремо.'});
+      await this.telegram.call('sendMessage',{chat_id:chat,text:'⚡ Deye Pulse у Telegram\n\n/dashboard — дашборд\n/schedule — графік відключень\n/parameters — усі параметри\n/events — події\n/settings — пороги та сповіщення\n\nПанель оновлюється одним повідомленням. Кнопка «Оновити» запитує останній доступний вимір хмари; вона не прискорює завантаження логера. Застарілі дані позначаються окремо.'});
       action='home';
     }
+    if(action==='schedule' || action==='schedule_refresh'){await this.schedule?.tick();action='schedule';}
     if(action==='refresh') {if(this.nextDeye-this.now()<=this.pollSeconds*1000-5000) {this.nextDeye=0;await this.tick();}action='home';}
-    if(!['home','events','history','settings'].includes(action) && !/^(all|battery|grid|solar|load|temp|other):\d{1,3}$/.test(action)) action='home';
+    if(!['home','events','history','settings','schedule'].includes(action) && !/^(all|battery|grid|solar|load|temp|other):\d{1,3}$/.test(action)) action='home';
     panel.view=action;panel.viewUntil=this.now()+120000;
     // Persist command effects and cursor together before any fallible panel edit.
     this.record.cursor=update.update_id;await this.persist();

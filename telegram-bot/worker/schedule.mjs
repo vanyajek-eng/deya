@@ -129,3 +129,24 @@ export function scheduleText(client,now=Date.now()){
     (v.error||!v.fresh?'\n⚠️ Не вдалося оновити графік. Нові вимкнення за застарілим графіком не запускаються.':'')+
     '\nПовернення після фактичного відновлення мережі або 40 хв без відключення. Діють перевірки навантаження.';
 }
+
+export function schedulePanelText(view,now=Date.now()){
+  const time=at=>new Intl.DateTimeFormat('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit'}).format(at);
+  const dateLabel=date=>date.split('-').reverse().join('.');
+  const today=kyivDate(now),tomorrow=new Date(Date.parse(today+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+  const lines=['📅 Графік відключень','Львівська область · підчерга 6.2',''];
+  for(const [date,label] of [[today,'Сьогодні'],[tomorrow,'Завтра']]){
+    const day=view?.data?.days.find(d=>d.date===date);
+    lines.push(label+' · '+dateLabel(date));
+    if(!day)lines.push('Графік ще не отримано.');
+    else {
+      lines.push(day.intervals.length?day.intervals.map(i=>'🔴 '+time(i.start)+'–'+(kyivDate(i.end)!==date?'24:00':time(i.end))).join('\n'):'🟢 Відключень за опублікованим графіком немає.');
+      lines.push('Оновлення оператора: '+dateLabel(kyivDate(day.publishedAt))+' '+time(day.publishedAt));
+    }
+    lines.push('');
+  }
+  if(view?.fetchedAt)lines.push('Остання перевірка: '+dateLabel(kyivDate(view.fetchedAt))+' '+time(view.fetchedAt));
+  if(!view?.fresh || view?.error)lines.push('⚠️ Актуальність графіка не підтверджена. Очікуємо успішного оновлення.');
+  lines.push('Час київський. Джерело: Львівобленерго.','Графік може змінюватися; фактична наявність світла визначається окремо.');
+  return lines.join('\n');
+}

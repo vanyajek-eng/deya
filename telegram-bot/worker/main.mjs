@@ -19,8 +19,8 @@ const telegram=new Telegram(settings.token),deye=new Deye(settings),store=new Cl
 await store.load();
 const webhook=await telegram.call('getWebhookInfo');
 if(webhook.url) throw new Error('Бот уже має webhook. Спочатку узгодь перенесення на цей процес.');
-const bot=new Bot({store,deye,telegram,chat:settings.chat,pollSeconds:settings.poll});
 const schedule=new ScheduleClient();
+const bot=new Bot({store,deye,telegram,chat:settings.chat,pollSeconds:settings.poll,schedule});
 let boiler;
 try {const c=tuyaConfig();if(c) boiler=new BoilerGuard(new TuyaClient(c),()=>Date.now(),schedule);}
 catch {bot.record.boiler={mode:'unknown',message:'Помилка конфігурації Tuya; автовимкнення не запущене.'};console.error('Boiler configuration invalid');}
