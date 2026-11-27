@@ -5,6 +5,9 @@
   "functions": {
     "api/admin.mjs": {
       "maxDuration": 60
+    },
+    "api/schedule.mjs": {
+      "maxDuration": 30
     }
   },
   "daemons": {

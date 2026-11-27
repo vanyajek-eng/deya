@@ -5,6 +5,7 @@ import { CloudStore, BlobPreconditionFailedError } from './store.mjs';
 import { Bot } from './bot.mjs';
 import { tuyaConfig, TuyaClient } from './tuya.mjs';
 import { BoilerGuard } from './boiler.mjs';
+import { ScheduleClient } from './schedule.mjs';
 const settings=config();
 const stop=new AbortController();
 process.on('SIGTERM',()=>stop.abort());process.on('SIGINT',()=>stop.abort());
@@ -19,8 +20,9 @@ await store.load();
 const webhook=await telegram.call('getWebhookInfo');
 if(webhook.url) throw new Error('Бот уже має webhook. Спочатку узгодь перенесення на цей процес.');
 const bot=new Bot({store,deye,telegram,chat:settings.chat,pollSeconds:settings.poll});
+const schedule=new ScheduleClient();
 let boiler;
-try {const c=tuyaConfig();if(c) boiler=new BoilerGuard(new TuyaClient(c));}
+try {const c=tuyaConfig();if(c) boiler=new BoilerGuard(new TuyaClient(c),()=>Date.now(),schedule);}
 catch {bot.record.boiler={mode:'unknown',message:'Помилка конфігурації Tuya; автовимкнення не запущене.'};console.error('Boiler configuration invalid');}
 const inbox=[];
 // One poller, sequential handling, durable offset. No parallel getUpdates consumer.
@@ -38,6 +40,12 @@ const input=(async()=>{
 // Tuya checks must not wait for Deye requests or Telegram deliveries.
 // CloudStore serializes writes from both loops using the current ETag.
 let boilerFailure;
+const scheduleLoop=(async()=>{
+  while(!stop.signal.aborted){
+    await schedule.tick();
+    await sleep(1000);
+  }
+})();
 const boilerLoop=(async()=>{
   while(!stop.signal.aborted) {
     try {if(boiler) await boiler.tick(bot);}
@@ -67,7 +75,7 @@ try {
   }
 } finally {
   stop.abort();for(const entry of inbox) entry.resolve();
-  await boilerLoop;
+  await Promise.all([boilerLoop,scheduleLoop]);
   if(!boilerFailure) await store.save(bot.record).catch(()=>{});server.close();
 }
 // Pending bounded long-poll is safe to abandon on shutdown.
