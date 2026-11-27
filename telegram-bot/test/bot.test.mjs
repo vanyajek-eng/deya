@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { authorized, defaults, evolve, fresh, metrics, parseDevice, render } from '../worker/core.mjs';
 import { Deye, Telegram, ApiError } from '../worker/api.mjs';
 import { Bot } from '../worker/bot.mjs';
-import { initial } from '../worker/store.mjs';
+import { initial, CloudStore } from '../worker/store.mjs';
 const NOW=1800000000000;
 const sample=(grid=230,soc=73,load=1000,at=NOW)=>({sn:'test',at,online:true,points:[
   {key:'SOC',value:String(soc),unit:'%'},{key:'BatteryVoltage',value:'53.2',unit:'V'},
@@ -121,4 +121,22 @@ test('deleted dashboard is recreated only on explicit command',async()=>{
   h.bot.telegram.call=async(method,body)=>{h.calls.push({method,body});if(method==='editMessageText') throw new ApiError('message to edit not found',400);return {message_id:43};};
   await h.bot.show('home',{automatic:true});assert.ok(!h.calls.some(c=>c.method==='sendMessage'));
   await h.bot.show('home');assert.equal(h.bot.record.messageId,43);
+});
+test('cloud storage uses canonical ETag when a gateway weakens the GET tag',async()=>{
+  let options;
+  const s=new CloudStore('test',{
+    async get(){return {stream:new Response(JSON.stringify(initial())).body,blob:{etag:'W/"revision-one"'}};},
+    async head(){return {etag:'"revision-one"'};},
+    async put(path,data,o){options=o;return {etag:'"revision-two"'};}
+  });
+  await s.load();await s.save(s.value);
+  assert.equal(options.ifMatch,'"revision-one"');assert.equal(s.etag,'"revision-two"');
+});
+test('cloud storage rereads content if HEAD and GET describe different versions',async()=>{
+  let reads=0;
+  const s=new CloudStore('test',{
+    async get(){reads++;return {stream:new Response(JSON.stringify(initial())).body,blob:{etag:reads===1 ? '"one"' : '"two"'}};},
+    async head(){return {etag:'"two"'};},async put(){throw new Error('not used');}
+  });
+  await s.load();assert.equal(reads,2);assert.equal(s.etag,'"two"');
 });
