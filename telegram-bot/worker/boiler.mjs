@@ -75,7 +75,7 @@ export class BoilerGuard {
     try {
       let relay=await this.grid();
       s.relayOnline=relay.online;
-      const scheduled=scheduleHold(s,this.schedule,relay.online,now);
+      let scheduled=scheduleHold(s,this.schedule,relay.online,now);
       s.scheduleInfo=this.schedule ? scheduleText(this.schedule,now) : null;
       let watts=null;
       if(this.client.c.loadControl && relay.online) watts=await this.power(s);
@@ -165,6 +165,16 @@ export class BoilerGuard {
       if(!overloaded && !scheduled && relay.online!==false) {
         s.relayOnline=relay.online;s.onlineSince=s.restoreNeeded ? now : null;s.mode=s.restoreNeeded ? 'waiting_grid' : 'grid_online';
         s.message='Breaker уже онлайн. Команду вимкнення не надсилали.';await this.save(bot);return;
+      }
+      if(scheduled && relay.online && !overloaded) {
+        const confirmed=await this.schedule.confirmActive();
+        scheduled=scheduleHold(s,this.schedule,relay.online,this.now());
+        s.scheduleInfo=scheduleText(this.schedule,this.now());
+        if(!confirmed || !scheduled || bot.record.boilerPaused) {
+          s.mode='schedule_unverified';
+          s.message='Планове вимкнення не виконано: свіжий графік не підтверджує інтервал, джерело недоступне або автоматику призупинено.';
+          await this.save(bot);return;
+        }
       }
       // Set intent durably before the idempotent OFF command, including ambiguous timeouts.
       s.restoreNeeded=true;s.offReason=overloaded ? 'overload' : scheduled ? 'schedule' : 'grid';s.mode='pending';s.commandAt=this.now();s.message='Надсилаю вимкнення Smart Plug +: '+s.offReason;

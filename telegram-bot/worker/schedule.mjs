@@ -64,12 +64,27 @@ export function parseSchedule(json,now=Date.now()){
   return {group:SCHEDULE_GROUP,days:Object.values(days).sort((a,b)=>a.date.localeCompare(b.date))};
 }
 export class ScheduleClient {
-  constructor(fetcher=fetch,now=()=>Date.now()){this.fetcher=fetcher;this.now=now;this.next=0;this.data=null;this.fetchedAt=0;this.error=null;}
-  async tick(){
-    const now=this.now();if(now<this.next)return;
+  constructor(fetcher=fetch,now=()=>Date.now()){this.fetcher=fetcher;this.now=now;this.next=0;this.data=null;this.fetchedAt=0;this.error=null;this.inFlight=null;}
+  async tick(force=false){
+    if(this.inFlight)return this.inFlight;
+    if(!force && this.now()<this.next)return;
+    this.inFlight=this.refresh().finally(()=>{this.inFlight=null;});
+    return this.inFlight;
+  }
+  async confirmActive(){
+    // Wait for an older background request, then request the source again.
+    if(this.inFlight)await this.inFlight;
+    await this.tick(true);
+    const now=this.now();
+    if(this.error)return false;
+    const day=this.data?.days.find(d=>d.date===kyivDate(now));
+    return !!day?.intervals.some(i=>i.start<=now && now<i.end);
+  }
+  async refresh(){
+    const now=this.now();
     this.next=now+60000;
     try{
-      const r=await this.fetcher(SCHEDULE_URL,{signal:AbortSignal.timeout(15000),redirect:'error'});
+      const r=await this.fetcher(SCHEDULE_URL,{signal:AbortSignal.timeout(15000),redirect:'error',cache:'no-store',headers:{'Cache-Control':'no-cache'}});
       if(!r.ok)throw new Error('SCHEDULE_HTTP');
       const reader=r.body.getReader(),chunks=[];let size=0;
       while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>8*1024*1024){await reader.cancel();throw new Error('SCHEDULE_SIZE');}chunks.push(value);}

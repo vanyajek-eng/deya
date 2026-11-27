@@ -6,7 +6,7 @@ const start=kyivTime('2026-11-28','14:30'),end=kyivTime('2026-11-28','18:00');
 function payload(line='Електроенергії немає з 14:30 до 18:00.',date='28.11.2026'){
   return {'hydra:member':[{type:'photo-grafic',menuItems:[{rawHtml:'<p>Графік погодинних відключень на '+date+'</p><p>Інформація станом на 21:22 27.11.2026</p><p>Група 6.1. Електроенергія є.</p><p>Група 6.2. '+line+'</p>'}]}]};
 }
-function source(){return {current(){return {fresh:true,data:{days:[{date:'2026-11-28',intervals:[{start,end}]}]}};}};}
+function source(){return {async confirmActive(){return true;},current(){return {fresh:true,data:{days:[{date:'2026-11-28',intervals:[{start,end}]}]}};}};}
 test('official payload: only exact group, Kyiv date and explicit intervals',()=>{
   assert.deepEqual(parseSchedule(payload(),start).days[0].intervals,[{start,end}]);
   const p=payload();p['hydra:member'][0].menuItems[0].rawHtml=p['hydra:member'][0].menuItems[0].rawHtml.replaceAll('<','\\u003C').replaceAll('>','\\u003E');
@@ -69,7 +69,7 @@ function fixture(){
     async validatePlug(){},async plugState(){return on;},async relayPower(){return {watts,measuredAt:now};},
     async off(){calls.push('off');on=false;},async on(){calls.push('on');on=true;}};
   const bot={chat:'owner',record:{queue:[]},async persist(){}},guard=new BoilerGuard(client,()=>now,source());
-  return {client,bot,calls,set(x){if('on'in x)on=x.on;if('online'in x)online=x.online;if('watts'in x)watts=x.watts;},async tick(ms=5000){now+=ms;await guard.tick(bot);}};
+  return {client,bot,guard,calls,set(x){if('on'in x)on=x.on;if('online'in x)online=x.online;if('watts'in x)watts=x.watts;},async tick(ms=5000){now+=ms;await guard.tick(bot);}};
 }
 test('full guard: scheduled OFF, no early ON, ON at 40m, no repeat OFF',async()=>{
   const h=fixture();await h.tick();assert.deepEqual(h.calls,['off']);
@@ -95,4 +95,35 @@ test('failed source requests are cached only five minutes',async()=>{
   await c.tick();assert.equal(c.current().fresh,true);
   c.fetcher=async()=>{throw new Error('offline');};now+=60000;await c.tick();assert.equal(c.current().fresh,true);
   now+=240001;assert.equal(c.current().fresh,false);
+});
+test('preflight bypasses minute cache and rejects a cancelled or moved interval',async()=>{
+  let requests=0,line;const c=new ScheduleClient(async()=>{requests++;return new Response(JSON.stringify(payload(line)));},()=>start);
+  await c.tick();assert.equal(requests,1);
+  line='Електроенергія є.';assert.equal(await c.confirmActive(),false);assert.equal(requests,2);
+  line='Електроенергії немає з 16:00 до 18:00.';assert.equal(await c.confirmActive(),false);
+  line=undefined;assert.equal(await c.confirmActive(),true);
+});
+test('preflight fails closed on network failure despite a usable cached interval',async()=>{
+  const c=new ScheduleClient(async()=>new Response(JSON.stringify(payload())),()=>start);await c.tick();
+  c.fetcher=async()=>{throw new Error('offline');};assert.equal(await c.confirmActive(),false);
+  assert.equal(c.current().fresh,true);
+});
+test('preflight waits for old in-flight request and performs a second fetch',async()=>{
+  let release,count=0;const gate=new Promise(r=>release=r);
+  const c=new ScheduleClient(async()=>{count++;if(count===1)await gate;return new Response(JSON.stringify(payload(count===1?undefined:'Електроенергія є.')));},()=>start);
+  const background=c.tick(),confirmation=c.confirmActive();release();await background;
+  assert.equal(await confirmation,false);assert.equal(count,2);
+});
+test('guard does not turn off on a failed preflight, but overload and outage still work',async()=>{
+  const h=fixture();h.guard.schedule.confirmActive=async()=>false;
+  await h.tick();assert.deepEqual(h.calls,[]);assert.equal(h.bot.record.boiler.restoreNeeded,false);
+  h.set({watts:3800});await h.tick();assert.deepEqual(h.calls,['off']);
+  const outage=fixture();outage.guard.schedule.confirmActive=async()=>{throw new Error('must not run');};
+  outage.set({online:false});await outage.tick();assert.deepEqual(outage.calls,['off']);
+});
+test('guard re-evaluates schedule cancellation before physical OFF',async()=>{
+  const h=fixture();h.guard.schedule.confirmActive=async()=>{
+    h.guard.schedule.current=()=>({fresh:true,data:{days:[{date:'2026-11-28',intervals:[]}]}});return false;
+  };
+  await h.tick();await h.tick();assert.deepEqual(h.calls,[]);assert.equal(h.bot.record.boiler.schedule.released,true);
 });
